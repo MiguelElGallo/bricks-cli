@@ -64,19 +64,16 @@ Databricks CLI v1.5.0
 
 ## A quick look around
 
-You won't need every command, but it helps to know how they're organized.
-`databricks --help` groups commands by area. The star of the show is `bundle`:
+The CLI groups commands by area — run `databricks --help` to see them. The group
+you'll use throughout this guide is `bundle`, which deploys the project:
 
-| Group | Example | Used for |
-|-------|---------|----------|
-| `bundle` | `databricks bundle deploy` | Deploy this project — the headline |
-| `current-user` | `databricks current-user me` | Confirm who you're signed in as |
-| `warehouses` | `databricks warehouses list` | Find the SQL warehouse ID for dbt |
-| `catalogs` | `databricks catalogs list` | Pick the Unity Catalog target |
+```bash
+databricks bundle --help
+```
 
 !!! info "Want the full list?"
-    The [CLI commands reference](../reference/cli-commands.md) has the complete
-    `bundle` subcommand table and the handy global flags (`-o json`, `--debug`).
+    The [CLI commands reference](../reference/cli-commands.md) lists the command
+    groups you'll use here and the handy global flags (`-o json`, `--debug`).
 
 ## Recap
 
@@ -84,9 +81,9 @@ In this step you:
 
 - [x] learned the difference between the **legacy** and the **new** CLI,
 - [x] **installed** the new binary, and
-- [x] **verified** it with `databricks version`.
+- [x] **confirmed** it with `databricks version`.
 
-Next, you'll point the CLI at a workspace and prove who you are — without storing
-a single token.
+Next, you'll point the CLI at a workspace and prove who you are using your Azure
+login.
 
 [:lucide-arrow-right: Connect to Databricks](connect-to-databricks.md){ .md-button .md-button--primary }

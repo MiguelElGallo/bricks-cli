@@ -17,9 +17,8 @@ table.
 
 ## Tell the bundle where to build
 
-The project deliberately contains **no** workspace values. You provide them at
-deploy time as `BUNDLE_VAR_*` environment variables, so nothing workspace-specific
-is ever committed.
+You provide the workspace values at deploy time as `BUNDLE_VAR_*` environment
+variables, so you can point the same project at any workspace.
 
 From the repo root:
 
@@ -69,18 +68,24 @@ Validation OK!
     `REPLACE_WITH_*` even after a correct override, so only the `value` matters:
 
     ```bash
-    databricks bundle validate -t dev -p bricks-demo -o json \
-      | grep -E '"value": "REPLACE_WITH_YOUR_' \
-      && echo "⚠️  a placeholder is still set — export the missing BUNDLE_VAR_*" \
-      || echo "✓ no placeholders left"
+    if config="$(databricks bundle validate -t dev -p bricks-demo -o json)"; then
+      printf '%s' "$config" | grep -q '"value": "REPLACE_WITH_YOUR_' \
+        && echo "⚠️  a placeholder is still set — export the missing BUNDLE_VAR_*" \
+        || echo "✓ no placeholders left"
+    else
+      echo "✗ validate failed — fix the errors above first"
+    fi
     ```
 
     (`schema` is safe to leave unset — it defaults to `dbt_nyc_taxi`.)
 
 ??? info "What is the `dev` target?"
     `dev` uses **development mode**: deployed resources are prefixed with
-    `[dev <you>]`, schedules are paused, and copies are easy to find and clean
-    up. It's the safe place to iterate. `prod` deploys "for real" — see
+    `[dev <you>]` and schedules are paused, so the dev *job* stays separate from
+    prod and is easy to clean up. Dev mode isolates the job resource, not the
+    data — the dbt task writes to whatever catalog/schema you supply, so point dev
+    and prod at different schemas (or override `BUNDLE_VAR_schema` per target) to
+    keep their tables apart. `prod` deploys "for real" — see
     [Deploy to production](../how-to/deploy-to-production.md).
 
 ## Step 2 — Deploy
@@ -136,8 +141,8 @@ databricks api post /api/2.0/sql/statements -p bricks-demo --json '{
 }'
 ```
 
-You should get back **100 rows** and an average trip length of roughly **26
-minutes** — the same numbers this demo was verified with.
+For this seed you should get back **100 rows** and an average trip length of
+roughly **26 minutes**.
 
 !!! tip
     Prefer a UI? Open the table in **Catalog Explorer**, or run the query in a
@@ -155,7 +160,7 @@ databricks bundle destroy -t dev -p bricks-demo
 
 Congratulations — you've completed the tutorial! You:
 
-- [x] supplied workspace values as `BUNDLE_VAR_*` (never committed),
+- [x] supplied workspace values as `BUNDLE_VAR_*` environment variables,
 - [x] **validated** and **deployed** the bundle with no Terraform,
 - [x] **ran** the serverless dbt job to `TERMINATED SUCCESS`, and
 - [x] **queried** the resulting Delta table.
@@ -177,7 +182,7 @@ Where to go next:
 
     ---
 
-    Deploy from GitHub with no stored secrets.
+    Deploy from GitHub Actions using OIDC.
 
     [:lucide-arrow-right: Set up CI/CD with OIDC](../how-to/set-up-oidc-cicd.md)
 

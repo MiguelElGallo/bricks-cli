@@ -6,7 +6,7 @@ config-version: 2
 profile: 'bricks_cli_dbt'
 
 # Where dbt looks for each type of file. Everything lives under src/ so that
-# non-dbt Databricks resources (see ../resources) can sit alongside the dbt code
+# non-dbt Databricks resources (see resources/) can sit alongside the dbt code
 # in the same Declarative Automation Bundle.
 model-paths: ["src/models"]
 analysis-paths: ["src/analyses"]

@@ -5,7 +5,7 @@ icon: lucide/terminal
 # CLI commands
 
 Source of truth: [github.com/databricks/cli](https://github.com/databricks/cli).
-This demo was built and verified with **Databricks CLI v1.5.0**.
+Examples assume **Databricks CLI v1.5.0**.
 
 ## Command groups used here
 

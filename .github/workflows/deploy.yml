@@ -1,6 +1,6 @@
 # Deploy the bundle to the prod target on merge to main, then run the dbt job.
 #
-# Secretless auth via GitHub OIDC federation (see docs/how-to/set-up-oidc-cicd.md).
+# Auth via GitHub OIDC federation (see docs/how-to/set-up-oidc-cicd.md).
 # The `environment: prod` gate lets you require manual approval and scope the
 # federation policy subject to `repo:<owner>/<repo>:environment:prod`.
 name: Deploy bundle (prod)
@@ -20,8 +20,8 @@ env:
   DATABRICKS_AUTH_TYPE: github-oidc
   DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
   DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}  # service principal UUID (not a secret)
-  # Workspace-specific values are GitHub repo/environment Variables, never
-  # committed. They fill the bundle variables of the same name.
+  # Workspace-specific values come from GitHub repository Variables. They fill
+  # the bundle variables of the same name.
   BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
   BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
   BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
@@ -45,6 +45,6 @@ jobs:
       - name: Deploy
         run: databricks bundle deploy --target prod
 
-      # Execute the dbt job once (seed -> table -> test) to verify the deploy.
+      # Run the dbt job once (seed -> table -> test) as a post-deploy smoke check.
       - name: Run dbt job
         run: databricks bundle run nyc_taxi_dbt_job --target prod

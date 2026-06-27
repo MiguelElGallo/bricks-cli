@@ -5,8 +5,7 @@ icon: lucide/plug
 # Connect to Databricks
 
 The CLI can do nothing until it knows **which workspace** to talk to and **who
-you are**. In this step you'll set both up using your existing Azure login — so
-there are **no tokens to create, store, or rotate**.
+you are**. In this step you'll set both up using your existing Azure login.
 
 !!! info "Unified authentication"
     Every Databricks command — including `bundle deploy` — looks for credentials
@@ -49,8 +48,8 @@ Replace the `host` with your own workspace URL. (1)
 
 !!! note "Why `auth_type = azure-cli`?"
     It tells the CLI to mint short-lived Microsoft Entra ID tokens from your `az`
-    session, on demand. Nothing secret is written to disk — the profile only
-    stores a host and a *method*.
+    session on demand. The profile itself stores only a host and an auth
+    *method*.
 
 ## Prove it works
 
@@ -84,7 +83,7 @@ You now have:
       `azure-cli` auth, and
 - [x] a **confirmed identity** from `databricks current-user me`.
 
-No tokens, no secrets — just your Azure login. Next, let's look at the dbt
-project you're about to deploy.
+That's the whole local setup — your Azure login is doing the work. Next, let's
+look at the dbt project you're about to deploy.
 
 [:lucide-arrow-right: Explore the dbt project](explore-the-project.md){ .md-button .md-button--primary }

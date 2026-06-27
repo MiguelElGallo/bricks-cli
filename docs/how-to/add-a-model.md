@@ -70,12 +70,6 @@ databricks bundle deploy -t dev -p bricks-demo
 databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo
 ```
 
-!!! info "Let an agent help"
-    This repo installs the official
-    [dbt agent skills](../reference/project-layout.md#dbt-agent-skills) under
-    `.agents/skills/`, so an AI assistant working here can scaffold models, write
-    tests, and run dbt against the `dbt-databricks` adapter more accurately.
-
 ## Related
 
 - [Run dbt locally](run-dbt-locally.md)

@@ -21,7 +21,7 @@ What every file and directory is for.
 ├── src/
 │   ├── seeds/nyc_taxi/             # the seed CSV + its properties
 │   ├── models/nyc_taxi/           # the single table model + tests
-│   ├── analyses/ macros/ snapshots/ tests/   # standard dbt folders (empty)
+│   └── analyses/, macros/, snapshots/, tests/   # standard dbt folders (empty)
 ├── docs/                           # this documentation site (Markdown sources)
 ├── .github/workflows/             # CI (validate), deploy (OIDC), docs (Pages)
 └── .agents/skills/                # installed dbt agent skills
@@ -43,7 +43,7 @@ What every file and directory is for.
 
 ## What's git-ignored
 
-Local state and any file that could carry a workspace value never enters git:
+These local state files — which can carry workspace values — are git-ignored:
 
 ```text
 .databricks/            # bundle state (host, user) — local only

@@ -6,7 +6,7 @@ hide:
 
 # bricks-cli
 
-A small, **working** reference for deploying a [dbt](https://www.getdbt.com/)
+A small, end-to-end reference for deploying a [dbt](https://www.getdbt.com/)
 project to **Azure Databricks** using the latest **Databricks CLI** and
 **Declarative Automation Bundles (DABs)** — the bundle's *direct deployment*
 engine, so **no Terraform is required**.
@@ -90,19 +90,3 @@ that the latest CLI ships a **direct deployment** engine, so a bundle deploy no
 longer shells out to Terraform — exactly what this repo's name asks for. The full
 answer, with sources, is in
 [Why Declarative Automation Bundles](explanation/why-asset-bundles.md).
-
-## What was verified
-
-This is not a paper example — it was run against a live workspace:
-
-- [x] `databricks bundle validate` → OK for `dev` and `prod`.
-- [x] `databricks bundle deploy --target dev` → job created via direct deployment.
-- [x] `databricks bundle run nyc_taxi_dbt_job --target dev` → the serverless dbt
-      job finished `TERMINATED SUCCESS`.
-- [x] `dbt seed/run/test` → 100 rows loaded, `nyc_taxi_trips` table built, tests pass.
-
-!!! info "No workspace values live in this repo"
-    There is no Databricks host, warehouse ID, catalog, or Microsoft Entra
-    username committed anywhere. You supply those at deploy time through
-    environment variables and GitHub Variables. See
-    [Keeping secrets out of git](explanation/security-and-secrets.md).

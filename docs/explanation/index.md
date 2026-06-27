@@ -22,8 +22,8 @@ sense.
 
     ---
 
-    How unified auth resolves credentials, and why Azure CLI locally + OIDC in CI
-    means nothing secret is stored.
+    How unified auth resolves credentials, and why this repo uses Azure CLI
+    locally and OIDC in CI.
 
 -   :lucide-cable: **[How dbt connects to Databricks](how-dbt-connects.md)**
 

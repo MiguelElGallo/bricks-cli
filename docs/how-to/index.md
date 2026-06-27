@@ -26,7 +26,7 @@ the project) and just want to get a specific job done.
 
     ---
 
-    Deploy from GitHub Actions with zero stored tokens or client secrets.
+    Deploy from GitHub Actions using Workload Identity Federation (OIDC).
 
 -   :lucide-server: **[Deploy to production](deploy-to-production.md)**
 
