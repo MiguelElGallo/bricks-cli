@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: nyc_taxi_trips
+    description: >
+      NYC yellow-taxi trips materialized as a Delta table from the committed
+      seed. One row per trip with typed columns and a derived trip duration.
+    columns:
+      - name: pickup_at
+        description: "Trip start timestamp."
+        data_tests:
+          - not_null
+      - name: dropoff_at
+        description: "Trip end timestamp."
+        data_tests:
+          - not_null
+      - name: trip_distance
+        description: "Trip distance in miles."
+      - name: fare_amount
+        description: "Metered fare in USD."
+      - name: pickup_zip
+        description: "Pickup ZIP code."
+      - name: dropoff_zip
+        description: "Drop-off ZIP code."
+      - name: trip_minutes
+        description: "Derived trip duration in minutes (dropoff - pickup)."

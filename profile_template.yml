@@ -1,0 +1,23 @@
+# Prompts (with hints) used by `dbt init` to create your *local* profile in
+# ~/.dbt/profiles.yml. The deployed job does not use this — it gets the
+# warehouse, catalog and schema from the job's dbt task (see resources/).
+# No real workspace values are stored here.
+fixed:
+  type: databricks
+prompts:
+  host:
+    hint: 'workspace host, e.g. adb-XXXXXXXXXXXX.NN.azuredatabricks.net'
+  token:
+    hint: 'personal access token to use, dapiXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+    hide_input: true
+  http_path:
+    hint: 'HTTP path of SQL warehouse, e.g. /sql/1.0/warehouses/XXXXXXXXXXXXXXXX'
+  catalog:
+    hint: 'initial catalog'
+  schema:
+    hint: 'default schema where dbt will build objects'
+    default: dbt_nyc_taxi
+  threads:
+    hint: 'threads to use during development, 1 or more'
+    type: 'int'
+    default: 4

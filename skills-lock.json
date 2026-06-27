@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "skills": {
+    "adding-dbt-unit-test": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/adding-dbt-unit-test/SKILL.md",
+      "computedHash": "f8ce50a6604e31d9b73a57e95ef5f311fde48d04026b67ff09c20a5acd8a2f9f"
+    },
+    "answering-natural-language-questions-with-dbt": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/answering-natural-language-questions-with-dbt/SKILL.md",
+      "computedHash": "15cefed9def8313f8aec0f3b2c1ce575f544922841b1e6483c48bc4814654b3c"
+    },
+    "building-dbt-semantic-layer": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/building-dbt-semantic-layer/SKILL.md",
+      "computedHash": "4815f71466efd7dfff8bc4f913ad0aacdf5882c9a57ef6ed0f4819503d96b2c4"
+    },
+    "configuring-dbt-mcp-server": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/configuring-dbt-mcp-server/SKILL.md",
+      "computedHash": "906621310b13d0094f9cf530abf2b38c36de2f15bcb361c1a073661430a8d6e4"
+    },
+    "fetching-dbt-docs": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/fetching-dbt-docs/SKILL.md",
+      "computedHash": "c1724483e3b82a88cdb76d984842f5373d3c46a1f72ed48f596521b25adecf57"
+    },
+    "running-dbt-commands": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/running-dbt-commands/SKILL.md",
+      "computedHash": "d5fd3d0958a5c647ee0235d244cea7c7ce0ffe05b4d51d560f52196f65b6820f"
+    },
+    "troubleshooting-dbt-job-errors": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/troubleshooting-dbt-job-errors/SKILL.md",
+      "computedHash": "6c18b079cebf60a7e6ef419133459f59cf2ea05206f3ccdd3e38cc413d3e3fd0"
+    },
+    "using-dbt-for-analytics-engineering": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/using-dbt-for-analytics-engineering/SKILL.md",
+      "computedHash": "154227ce8eaf50cb8b38099722c5358f215e4728f4f5c18ea33f89bee5b8f88a"
+    },
+    "using-dbt-state": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/using-dbt-state/SKILL.md",
+      "computedHash": "757fc9b60e8b7b27ee8f0ee676e44eab644c4fe0f24041cbf9dacfe6091a3da8"
+    },
+    "working-with-dbt-mesh": {
+      "source": "dbt-labs/dbt-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dbt/skills/working-with-dbt-mesh/SKILL.md",
+      "computedHash": "0e596a4756158fe7b589f526838bab615a81832cda75fbab6449f5a0f54e3983"
+    }
+  }
+}

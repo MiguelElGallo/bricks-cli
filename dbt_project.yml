@@ -1,0 +1,41 @@
+name: 'bricks_cli_dbt'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'bricks_cli_dbt'
+
+# Where dbt looks for each type of file. Everything lives under src/ so that
+# non-dbt Databricks resources (see ../resources) can sit alongside the dbt code
+# in the same Declarative Automation Bundle.
+model-paths: ["src/models"]
+analysis-paths: ["src/analyses"]
+test-paths: ["src/tests"]
+seed-paths: ["src/seeds"]
+macro-paths: ["src/macros"]
+snapshot-paths: ["src/snapshots"]
+
+clean-targets:         # directories removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+# Scope of this demo is intentionally tiny: load one seed, then materialize one
+# table from it. Nothing more in dbt.
+seeds:
+  bricks_cli_dbt:
+    nyc_taxi:
+      nyc_taxi_trips_seed:
+        # Load the raw CSV with explicit, well-typed columns.
+        +column_types:
+          tpep_pickup_datetime: timestamp
+          tpep_dropoff_datetime: timestamp
+          trip_distance: double
+          fare_amount: double
+          pickup_zip: int
+          dropoff_zip: int
+
+models:
+  bricks_cli_dbt:
+    nyc_taxi:
+      # The single model in this project is a real Delta table.
+      +materialized: table

@@ -1,0 +1,42 @@
+# CI: validate the bundle and the dbt project on every pull request.
+#
+# Authentication is secretless: GitHub's OIDC token is exchanged for a
+# short-lived Databricks token via an account service principal that has a
+# GitHub Actions federation policy. No PAT or client secret is stored.
+# Setup: docs/05-deploy-and-run.md (section "Secretless CI/CD with OIDC").
+name: CI (validate bundle)
+
+concurrency: ci-${{ github.ref }}
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write   # required to mint the GitHub OIDC token
+  contents: read
+
+env:
+  DATABRICKS_AUTH_TYPE: github-oidc
+  DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+  DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}  # service principal UUID (not a secret)
+  # Workspace-specific values are GitHub repo/environment Variables, never
+  # committed. They fill the bundle variables of the same name.
+  BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+  BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
+  BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
+
+jobs:
+  validate:
+    name: Validate bundle (dev)
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: databricks/setup-cli@v1.5.0
+        with:
+          version: 1.5.0
+
+      - name: databricks bundle validate
+        run: databricks bundle validate --target dev

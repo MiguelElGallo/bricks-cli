@@ -1,0 +1,5 @@
+## requirements-dev.txt: dependencies for local dbt development.
+## The deployed job installs the same adapter into its serverless environment
+## (see resources/nyc_taxi.job.yml).
+
+dbt-databricks>=1.8.0,<2.0.0
