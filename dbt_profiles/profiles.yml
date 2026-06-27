@@ -1,0 +1,34 @@
+# dbt profile for LOCAL development only.
+#
+# The deployed Databricks job does NOT read this file: the dbt task in
+# resources/nyc_taxi.job.yml names the SQL warehouse, catalog and schema
+# directly (from bundle variables), and Databricks builds the connection and
+# injects credentials at run time.
+#
+# For local runs, export the variables below yourself — no secrets are stored
+# in the repo — then:
+#   dbt build --profiles-dir dbt_profiles --target dev
+# See docs for how to mint a short-lived Entra ID token for DBT_ACCESS_TOKEN.
+bricks_cli_dbt:
+  target: dev
+  outputs:
+
+    dev:
+      type: databricks
+      method: http
+      catalog: "{{ env_var('DBT_CATALOG') }}"
+      schema: "{{ env_var('DBT_SCHEMA', 'dbt_nyc_taxi') }}"
+      http_path: "{{ env_var('DBT_HTTP_PATH') }}"
+      threads: 4
+      host: "{{ env_var('DBT_HOST') }}"
+      token: "{{ env_var('DBT_ACCESS_TOKEN') }}"
+
+    prod:
+      type: databricks
+      method: http
+      catalog: "{{ env_var('DBT_CATALOG') }}"
+      schema: "{{ env_var('DBT_SCHEMA', 'dbt_nyc_taxi') }}"
+      http_path: "{{ env_var('DBT_HTTP_PATH') }}"
+      threads: 4
+      host: "{{ env_var('DBT_HOST') }}"
+      token: "{{ env_var('DBT_ACCESS_TOKEN') }}"

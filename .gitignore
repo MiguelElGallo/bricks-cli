@@ -216,3 +216,23 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Declarative Automation Bundles (Databricks CLI)
+# ---------------------------------------------------------------------------
+.databricks/
+scratch/**
+!scratch/README.md
+
+# dbt
+target/
+dbt_packages/
+dbt_modules/
+logs/
+
+# Databricks auth / local bundle variable overrides — never commit real values
+.databrickscfg
+**/variable-overrides*.json
+.env.local
+*.local.yml
+*.local.yaml

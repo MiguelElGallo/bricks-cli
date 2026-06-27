@@ -1,0 +1,21 @@
+version: 2
+
+seeds:
+  - name: nyc_taxi_trips_seed
+    description: >
+      Raw NYC yellow-taxi trips. A 100-row extract of the public
+      `samples.nyctaxi.trips` table on Databricks, committed as a CSV seed so the
+      demo is fully self-contained. Loaded into the warehouse by `dbt seed`.
+    columns:
+      - name: tpep_pickup_datetime
+        description: "Trip start timestamp."
+      - name: tpep_dropoff_datetime
+        description: "Trip end timestamp."
+      - name: trip_distance
+        description: "Trip distance in miles."
+      - name: fare_amount
+        description: "Metered fare in USD."
+      - name: pickup_zip
+        description: "Pickup ZIP code."
+      - name: dropoff_zip
+        description: "Drop-off ZIP code."

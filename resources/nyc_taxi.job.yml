@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    nyc_taxi_dbt_job:
+      name: nyc_taxi_dbt_job
+
+      # Run daily, one day after the previous run. In the 'dev' target this
+      # trigger is paused automatically (development mode).
+      trigger:
+        periodic:
+          interval: 1
+          unit: DAYS
+
+      tasks:
+        - task_key: dbt_nyc_taxi
+          # Run dbt on serverless job compute (no cluster to size or manage).
+          environment_key: default
+          dbt_task:
+            # dbt project is the bundle root.
+            project_directory: ../
+            # Warehouse / catalog / schema come from bundle variables, so the
+            # deployed job carries no hard-coded environment. Databricks builds
+            # the dbt connection from these (and injects DBT_HOST /
+            # DBT_ACCESS_TOKEN), so no credentials are stored in the repo.
+            warehouse_id: ${var.warehouse_id}
+            catalog: ${var.catalog}
+            schema: ${var.schema}
+            # Load the seed, build the table, then test it. No --target flag:
+            # Databricks generates the dbt profile/target from the warehouse,
+            # catalog and schema above, so the bundle target (dev/prod) — not a
+            # dbt target — selects the environment.
+            commands:
+              - 'dbt seed'
+              - 'dbt run'
+              - 'dbt test'
+
+      # Serverless environment that runs the dbt CLI.
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - dbt-databricks>=1.8.0,<2.0.0
