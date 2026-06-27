@@ -1,0 +1,93 @@
+---
+icon: lucide/cable
+---
+
+# How dbt connects to Databricks
+
+This project uses the **`dbt-databricks`** adapter — the official,
+Databricks-maintained dbt adapter. It connects to a **SQL warehouse** over its
+HTTP path and builds objects in **Unity Catalog** (`catalog.schema.object`).
+
+The important idea: the **deployed job** and **local runs** connect *differently*,
+and **neither stores a workspace identifier or credential in the repo**.
+
+## Two connection paths
+
+```mermaid
+flowchart TB
+    subgraph job["Deployed serverless job"]
+        task["dbt_task: warehouse_id / catalog / schema<br/>(from bundle variables)"]
+        gen["Databricks generates a dbt profile<br/>+ injects DBT_HOST / DBT_ACCESS_TOKEN"]
+        task --> gen
+    end
+    subgraph local["Local runs"]
+        prof["dbt_profiles/profiles.yml<br/>reads DBT_* env vars you set"]
+    end
+```
+
+### Deployed job
+
+The dbt task in `resources/nyc_taxi.job.yml` names the SQL warehouse, catalog,
+and schema directly (from bundle variables). From those task fields, Databricks
+**generates** the dbt profile and injects `DBT_HOST` / `DBT_ACCESS_TOKEN` at run
+time. There is no `profiles.yml` involved and no credential stored.
+
+### Local runs
+
+`dbt_profiles/profiles.yml` is used only on your machine. Every workspace-specific
+value is read from an environment variable:
+
+```yaml title="dbt_profiles/profiles.yml"
+bricks_cli_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      method: http
+      catalog:   "{{ env_var('DBT_CATALOG') }}"
+      schema:    "{{ env_var('DBT_SCHEMA', 'dbt_nyc_taxi') }}"
+      http_path: "{{ env_var('DBT_HTTP_PATH') }}"
+      threads: 4
+      host:  "{{ env_var('DBT_HOST') }}"
+      token: "{{ env_var('DBT_ACCESS_TOKEN') }}"
+```
+
+Because every value is an env var, the file is safe to commit — there is no host,
+warehouse ID, catalog, or token in it. The how-to has the commands:
+[Run dbt locally](../how-to/run-dbt-locally.md).
+
+## Why the job's commands omit `--target`
+
+This trips people up, so it's worth stating plainly.
+
+When `warehouse_id` / `catalog` / `schema` are set on the `dbt_task`, Databricks
+generates a profile whose name matches `dbt_project.yml`'s `profile:`
+(`bricks_cli_dbt`) but with a **single target** (named `databricks_cluster`). So:
+
+- The job runs **bare** `dbt seed` / `dbt run` / `dbt test`.
+- Passing `--target dev` would fail with *"profile does not have a target named
+  'dev'"* — that target only exists in your **local** `profiles.yml`.
+
+!!! info "Bundle target ≠ dbt target"
+    `--target dev` / `--target prod` on the **bundle** chooses which workspace you
+    deploy to. The dbt task always runs against the warehouse/catalog/schema you
+    supplied as bundle variables. They're two different "targets" that happen to
+    share a name.
+
+This is also why the official `dbt-sql` bundle template hardcodes `http_path` in
+its `profiles.yml`: Databricks injects `DBT_HOST` / `DBT_ACCESS_TOKEN` but not
+`DBT_HTTP_PATH`.
+
+## The adapter and materializations
+
+`requirements-dev.txt` pins the adapter for local dev, and the deployed job
+installs the same range into its serverless environment:
+
+```text
+dbt-databricks>=1.8.0,<2.0.0
+```
+
+`dbt-databricks` supports materializations including `view`, `table`,
+`incremental`, `materialized_view`, `streaming_table`, and `ephemeral`. This demo
+uses a plain `table` — see [Add a dbt model](../how-to/add-a-model.md) to try the
+others.

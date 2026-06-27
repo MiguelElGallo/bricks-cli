@@ -1,6 +1,6 @@
 # Deploy the bundle to the prod target on merge to main, then run the dbt job.
 #
-# Secretless auth via GitHub OIDC federation (see docs/05-deploy-and-run.md).
+# Secretless auth via GitHub OIDC federation (see docs/how-to/set-up-oidc-cicd.md).
 # The `environment: prod` gate lets you require manual approval and scope the
 # federation policy subject to `repo:<owner>/<repo>:environment:prod`.
 name: Deploy bundle (prod)

@@ -3,7 +3,7 @@
 # Authentication is secretless: GitHub's OIDC token is exchanged for a
 # short-lived Databricks token via an account service principal that has a
 # GitHub Actions federation policy. No PAT or client secret is stored.
-# Setup: docs/05-deploy-and-run.md (section "Secretless CI/CD with OIDC").
+# Setup: docs/how-to/set-up-oidc-cicd.md
 name: CI (validate bundle)
 
 concurrency: ci-${{ github.ref }}

@@ -1,0 +1,3 @@
+# Documentation site toolchain (Zensical static site generator).
+# Pinned for reproducible GitHub Pages builds. See .github/workflows/docs.yml.
+zensical==0.0.46

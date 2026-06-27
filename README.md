@@ -9,6 +9,11 @@ centre: **one seed → one table.** A 100‑row extract of the public
 `samples.nyctaxi.trips` table is committed as a dbt seed and materialized into a
 Delta table by a single dbt model.
 
+📖 **Documentation site:** <https://miguelelgallo.github.io/bricks-cli/> —
+structured with [Diátaxis](https://diataxis.fr/) (Tutorial · How‑to · Reference ·
+Explanation) and built with [Zensical](https://zensical.org/). The Markdown
+sources live in [`docs/`](docs/).
+
 ```mermaid
 flowchart LR
     subgraph repo["This repo (a Declarative Automation Bundle)"]
@@ -31,7 +36,8 @@ flowchart LR
 package and deploy Databricks projects as code. The important 2025–2026 change is
 that the latest CLI ships a **direct deployment** engine, so a bundle deploy no
 longer shells out to Terraform — exactly what this repo's name asks for. Details
-and sources are in [docs/03-asset-bundles.md](docs/03-asset-bundles.md).
+and sources are in
+[Why Declarative Automation Bundles](docs/explanation/why-asset-bundles.md).
 
 ## Repository layout
 
@@ -45,23 +51,29 @@ and sources are in [docs/03-asset-bundles.md](docs/03-asset-bundles.md).
 │   └── profiles.yml                # dbt profile for local runs (env‑var based)
 ├── profile_template.yml            # prompts for `dbt init` (local profile)
 ├── requirements-dev.txt            # dbt-databricks adapter (local dev)
+├── requirements-docs.txt           # Zensical (builds the docs site)
+├── zensical.toml                   # documentation site configuration
 ├── src/
 │   ├── seeds/nyc_taxi/             # the seed CSV + its properties
 │   └── models/nyc_taxi/           # the single table model + tests
-├── .github/workflows/             # secretless OIDC CI + deploy
-├── docs/                           # the guide (start here ↓)
+├── .github/workflows/             # secretless OIDC CI + deploy, and docs → Pages
+├── docs/                           # documentation site sources (Diátaxis)
 └── .agents/skills/                # installed dbt agent skills
 ```
 
 ## Quickstart
 
-Prerequisites: the Databricks CLI (see [docs/01](docs/01-databricks-cli.md)) and an
-authenticated session (see [docs/02](docs/02-authentication.md)). Workspace‑specific
-values are never committed — supply them as env vars (locally) or GitHub Variables
-(in CI); see [docs/05](docs/05-deploy-and-run.md). Then, from the repo root:
+Prerequisites: the Databricks CLI (see
+[Install the CLI](docs/tutorials/install-the-cli.md)) and an authenticated
+session (see [Connect to Databricks](docs/tutorials/connect-to-databricks.md)).
+Workspace‑specific values are never committed — supply them as env vars (locally)
+or GitHub Variables (in CI); see
+[Configuration values](docs/reference/configuration-values.md). Then, from the
+repo root:
 
 ```bash
 export DATABRICKS_HOST="https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net"
+export DATABRICKS_AUTH_TYPE="azure-cli"   # reuse your `az login` session
 export BUNDLE_VAR_warehouse_id="<your-warehouse-id>"
 export BUNDLE_VAR_catalog="<your-catalog>"
 
@@ -71,26 +83,32 @@ databricks bundle run nyc_taxi_dbt_job --target dev   # seed → table → test
 ```
 
 Want to iterate on the models locally first? See
-[docs/04-dbt-on-databricks.md](docs/04-dbt-on-databricks.md).
+[Run dbt locally](docs/how-to/run-dbt-locally.md).
 
 ## Documentation
 
-All docs are written against [databricks/cli](https://github.com/databricks/cli)
-concepts and were peer‑reviewed for accuracy.
+The full guide is a [Zensical](https://zensical.org/) site published to GitHub
+Pages and organized with the [Diátaxis](https://diataxis.fr/) framework. It's
+written against [databricks/cli](https://github.com/databricks/cli) concepts and
+peer‑reviewed for accuracy.
 
-| Doc | What it covers |
-|-----|----------------|
-| [01 – The Databricks CLI](docs/01-databricks-cli.md) | What the CLI is, install the latest version, command groups, config/profiles |
-| [02 – Authentication](docs/02-authentication.md) | Unified auth, Azure CLI login, profiles, env vars, OAuth/PAT, OIDC |
-| [03 – Asset Bundles](docs/03-asset-bundles.md) | DAB anatomy, direct deployment vs Terraform, targets, deployment modes |
-| [04 – dbt on Databricks](docs/04-dbt-on-databricks.md) | The `dbt-databricks` adapter, seed→table, the serverless dbt task |
-| [05 – Deploy & run](docs/05-deploy-and-run.md) | End‑to‑end deploy/run + **secretless CI/CD with GitHub OIDC** |
+👉 **<https://miguelelgallo.github.io/bricks-cli/>**
+
+| Section | What it covers |
+|---------|----------------|
+| [Tutorial – User Guide](docs/tutorials/index.md) | A guided, FastAPI‑style path from zero to a deployed, running dbt job |
+| [How‑to guides](docs/how-to/index.md) | Run dbt locally, add a model, set up OIDC CI/CD, deploy to prod |
+| [Reference](docs/reference/index.md) | CLI commands, bundle config, the dbt job resource, every config value, layout |
+| [Explanation](docs/explanation/index.md) | Why bundles, the auth model, how dbt connects, keeping secrets out of git |
+
+Build the site locally with `pip install -r requirements-docs.txt && zensical serve`.
 
 ## dbt agent skills
 
 The official [dbt-labs/dbt-agent-skills](https://github.com/dbt-labs/dbt-agent-skills)
 are installed under `.agents/skills/` so AI agents working in this repo can use
-them. See [docs/04-dbt-on-databricks.md](docs/04-dbt-on-databricks.md#dbt-agent-skills).
+them. See
+[Project layout → dbt agent skills](docs/reference/project-layout.md#dbt-agent-skills).
 
 ## What was verified
 
