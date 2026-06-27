@@ -13,8 +13,9 @@ so the same configuration works locally, in scripts, and in CI.
 In order, the CLI uses the first of these that is complete:
 
 1. **Bundle settings files** — for commands run from a bundle working directory
-   (e.g. `targets.<name>.workspace.host` in `databricks.yml`). These select the
-   host/target but never store credentials directly.
+   (e.g. `targets.<name>.workspace.host` in `databricks.yml`, which this repo
+   leaves unset, so the host comes from `DATABRICKS_HOST` or your profile). These
+   can select the host/target but never store credentials directly.
 2. **Environment variables** — `DATABRICKS_HOST`, `DATABRICKS_TOKEN`,
    `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET`, `DATABRICKS_AUTH_TYPE`, …
 3. **A profile** in `~/.databrickscfg` (selected by `--profile`/`-p`, else
@@ -29,8 +30,7 @@ needed.
 ## What this repo uses locally: Azure CLI auth
 
 Because the workspace is Azure Databricks and you're already signed in to Azure,
-the simplest local setup lets the CLI reuse your `az` login — **no tokens to
-store**:
+the simplest local setup lets the CLI reuse your `az` login:
 
 ```ini title="~/.databrickscfg"
 [bricks-demo]
@@ -39,8 +39,8 @@ auth_type = azure-cli
 ```
 
 `auth_type = azure-cli` makes the CLI mint short-lived Microsoft Entra ID tokens
-from your `az` session on demand. The profile stores only a host and a *method* —
-nothing secret.
+from your `az` session on demand. The profile stores only a host and an auth
+*method*.
 
 ## What this repo uses in CI: GitHub OIDC
 
@@ -52,14 +52,14 @@ sequenceDiagram
     participant GH as GitHub Actions
     participant DBX as Databricks account
     GH->>GH: mint short-lived OIDC token (id-token: write)
-    GH->>DBX: present OIDC token (aud = account ID)
+    GH->>DBX: present OIDC token (aud = workspace token endpoint)
     DBX->>DBX: federation policy trusts repo + environment?
     DBX-->>GH: short-lived Databricks access token
     GH->>DBX: databricks bundle deploy
 ```
 
-No PAT or client secret is stored. The trust is scoped to one repo + environment,
-and tokens expire in minutes. Setup is in
+The federation policy scopes the trust to one repo + environment, and the issued
+tokens expire in minutes. Setup is in
 [Set up secretless CI/CD with OIDC](../how-to/set-up-oidc-cicd.md).
 
 ## Credential options at a glance

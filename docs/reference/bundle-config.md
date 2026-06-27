@@ -33,8 +33,8 @@ See [The dbt job resource](job-resource.md).
 
 ## `variables`
 
-Every workspace-specific value is a bundle variable, so no real host, warehouse,
-catalog, or user is committed:
+Workspace-specific values are bundle variables, supplied at deploy time as
+`BUNDLE_VAR_*`:
 
 ```yaml
 variables:
@@ -56,8 +56,7 @@ values at deploy time via `BUNDLE_VAR_*` — see
 
 !!! note "Where the host comes from"
     There is intentionally **no** `workspace.host` in the file. The CLI resolves
-    the host from `DATABRICKS_HOST` or your selected profile, so the host is never
-    committed either.
+    the host from `DATABRICKS_HOST` or your selected profile.
 
 ## `targets`
 

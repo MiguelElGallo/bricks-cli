@@ -35,14 +35,32 @@ them.
 
 ## Step 1 — The seed
 
-A *seed* is just a CSV that dbt loads into your warehouse with `dbt seed`. Here's
-the top of `nyc_taxi_trips_seed.csv`:
+A *seed* is just a CSV that dbt loads into your warehouse with `dbt seed`. From
+the repo root, look at the top of the file:
 
-```csv title="src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv"
+```bash
+head -3 src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv
+```
+
+You'll see a header row and the first two trips:
+
+```csv
 tpep_pickup_datetime,tpep_dropoff_datetime,trip_distance,fare_amount,pickup_zip,dropoff_zip
 2016-01-01 00:04:30,2016-01-01 00:07:42,0.77,5.0,11217,11231
 2016-01-01 00:11:29,2016-01-01 00:30:42,7.75,24.5,10002,10025
 ```
+
+Confirm the whole seed is there:
+
+```bash
+wc -l src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv
+```
+
+```console
+101 src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv
+```
+
+That's 100 trips plus the header row.
 
 So the raw data lands well-typed, the column types are declared in
 `dbt_project.yml`:
@@ -68,8 +86,14 @@ seeds:
 
 ## Step 2 — The table
 
-Now the one model. It reads the seed and materializes a **real Delta table**,
-adding a derived `trip_minutes` column:
+Now the one model. Print it:
+
+```bash
+cat src/models/nyc_taxi/nyc_taxi_trips.sql
+```
+
+It reads the seed and materializes a **real Delta table**, adding a derived
+`trip_minutes` column:
 
 ```sql title="src/models/nyc_taxi/nyc_taxi_trips.sql"
 {{ config(materialized = 'table') }}
@@ -148,8 +172,7 @@ You've now seen the whole project:
 - [x] one **model** that turns the seed into a Delta table via `ref()`, and
 - [x] **tests** that run after the build.
 
-Nothing here mentions a specific workspace, warehouse, or catalog — those come
-from *outside* the code, which is exactly what makes it safe to share. Time to
-deploy it.
+The model code names no specific workspace, warehouse, or catalog — those come
+from *outside* the code, supplied at deploy time. Time to deploy it.
 
 [:lucide-arrow-right: Deploy and run the job](deploy-and-run.md){ .md-button .md-button--primary }

@@ -1,6 +1,6 @@
 # bricks-cli — deploy a dbt project to Databricks with the new Databricks CLI
 
-A small, **working** reference for deploying a dbt project to Azure Databricks
+A small, end-to-end reference for deploying a dbt project to Azure Databricks
 using the latest **Databricks CLI** and **Declarative Automation Bundles (DABs)** —
 the bundle's *direct deployment* engine, so **no Terraform is required**.
 
@@ -56,7 +56,7 @@ and sources are in
 ├── src/
 │   ├── seeds/nyc_taxi/             # the seed CSV + its properties
 │   └── models/nyc_taxi/           # the single table model + tests
-├── .github/workflows/             # secretless OIDC CI + deploy, and docs → Pages
+├── .github/workflows/             # OIDC CI + deploy, and docs → Pages
 ├── docs/                           # documentation site sources (Diátaxis)
 └── .agents/skills/                # installed dbt agent skills
 ```
@@ -66,10 +66,11 @@ and sources are in
 Prerequisites: the Databricks CLI (see
 [Install the CLI](docs/tutorials/install-the-cli.md)) and an authenticated
 session (see [Connect to Databricks](docs/tutorials/connect-to-databricks.md)).
-Workspace‑specific values are never committed — supply them as env vars (locally)
-or GitHub Variables (in CI); see
+Supply workspace‑specific values as env vars (locally) or GitHub Variables (in
+CI); see
 [Configuration values](docs/reference/configuration-values.md). Then, from the
-repo root:
+repo root — these commands authenticate from the env vars above, so they need no
+`-p` profile flag:
 
 ```bash
 export DATABRICKS_HOST="https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net"
@@ -89,8 +90,7 @@ Want to iterate on the models locally first? See
 
 The full guide is a [Zensical](https://zensical.org/) site published to GitHub
 Pages and organized with the [Diátaxis](https://diataxis.fr/) framework. It's
-written against [databricks/cli](https://github.com/databricks/cli) concepts and
-peer‑reviewed for accuracy.
+written against [databricks/cli](https://github.com/databricks/cli) concepts.
 
 👉 **<https://miguelelgallo.github.io/bricks-cli/>**
 
@@ -109,13 +109,3 @@ The official [dbt-labs/dbt-agent-skills](https://github.com/dbt-labs/dbt-agent-s
 are installed under `.agents/skills/` so AI agents working in this repo can use
 them. See
 [Project layout → dbt agent skills](docs/reference/project-layout.md#dbt-agent-skills).
-
-## What was verified
-
-This is not a paper example — it was run against a live workspace:
-
-- `databricks bundle validate` → OK for `dev` and `prod`.
-- `databricks bundle deploy --target dev` → job created via direct deployment.
-- `databricks bundle run nyc_taxi_dbt_job --target dev` → the serverless dbt job
-  finished `TERMINATED SUCCESS`.
-- `dbt seed/run/test` → 100 rows loaded, `nyc_taxi_trips` table built, tests pass.

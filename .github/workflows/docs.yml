@@ -2,8 +2,8 @@ name: Docs
 
 # Build the Zensical documentation site and publish it to GitHub Pages.
 # Pages must be configured to deploy from "GitHub Actions" (Settings -> Pages).
-# This workflow stores no secrets and reads no Databricks values — the docs are
-# built entirely from the Markdown sources under docs/.
+# The docs build only from the Markdown sources under docs/ and the Zensical
+# config, so this workflow needs no Databricks access.
 
 on:
   push:

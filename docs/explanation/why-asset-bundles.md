@@ -62,7 +62,10 @@ under the deploying principal's home directory (the service principal's in CI) a
 applies the permissions you declare.
 
 This is why the [tutorial](../tutorials/deploy-and-run.md) deploys to `dev` first:
-you can experiment without touching anything production.
+you can experiment with the *job* without disturbing the prod deployment. Dev mode
+isolates the job resource, not the data — the dbt task writes to whatever
+catalog/schema you supply, so use separate schemas to keep dev and prod tables
+apart.
 
 ## How it maps to this repo
 

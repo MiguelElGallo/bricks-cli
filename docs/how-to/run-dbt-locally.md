@@ -5,8 +5,8 @@ icon: lucide/laptop
 # Run dbt locally
 
 Iterate on models from your machine — running `dbt` directly against your SQL
-warehouse — before you deploy the bundle. Nothing workspace-specific is
-committed: every value comes from an environment variable.
+warehouse — before you deploy the bundle. Every value comes from an environment
+variable, so you supply your workspace details at run time.
 
 ## Prerequisites
 
@@ -81,8 +81,8 @@ warehouse HTTP path, catalog, and schema, then writes a profile to
     paste a **short-lived Microsoft Entra token** — the same value from
     `az account get-access-token …` in step 2 — rather than creating a long-lived
     personal access token (PAT). Whatever you enter is written to
-    `~/.dbt/profiles.yml`, never to the repo, and an Entra token expires on its
-    own in about an hour.
+    `~/.dbt/profiles.yml` on your machine, and an Entra token expires on its own
+    in about an hour.
 
 ## Related
 

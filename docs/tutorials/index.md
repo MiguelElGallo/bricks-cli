@@ -18,7 +18,7 @@ By the end you will have:
 - a serverless job that runs `dbt seed`, `dbt run`, and `dbt test` for you —
   finishing with a real Delta table you can query.
 
-No Terraform, and no secrets committed to git.
+No Terraform required.
 
 ## Run the code
 
@@ -58,8 +58,8 @@ flowchart LR
 
 1. [**Install the Databricks CLI**](install-the-cli.md) — get the single binary
    that drives everything.
-2. [**Connect to Databricks**](connect-to-databricks.md) — authenticate with the
-   Azure CLI, no tokens to store.
+2. [**Connect to Databricks**](connect-to-databricks.md) — authenticate with your
+   Azure CLI session.
 3. [**Explore the dbt project**](explore-the-project.md) — see how a seed becomes
    a table before you deploy anything.
 4. [**Deploy and run the job**](deploy-and-run.md) — ship the bundle and watch

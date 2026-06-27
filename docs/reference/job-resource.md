@@ -55,7 +55,7 @@ resources:
 | `environments[].spec.environment_version` | Serverless environment version (`"4"`) |
 | `environments[].spec.dependencies` | Python deps installed into the environment |
 
-## Why there's no `--target`
+## No `--target` on the dbt commands
 
 The `commands` are bare `dbt seed` / `dbt run` / `dbt test` — **no `--target`
 flag**. When `warehouse_id` / `catalog` / `schema` are set on the `dbt_task`,
@@ -64,10 +64,11 @@ injects `DBT_HOST` / `DBT_ACCESS_TOKEN`. Passing `--target dev` would fail,
 because that generated profile has no target by that name.
 
 !!! info "The bundle target, not a dbt target, picks the environment"
-    `--target dev` / `--target prod` on the **bundle** selects which workspace
-    you deploy to. The dbt task always runs against the warehouse/catalog/schema
-    you supplied as bundle variables. Full explanation:
-    [How dbt connects to Databricks](../explanation/how-dbt-connects.md).
+    `--target dev` / `--target prod` selects the **bundle target** — its mode, root
+    path, and permissions. (In this repo the workspace host itself comes from
+    `DATABRICKS_HOST` or your profile, not the target.) The dbt task always runs
+    against the warehouse/catalog/schema you supplied as bundle variables. Full
+    explanation: [How dbt connects to Databricks](../explanation/how-dbt-connects.md).
 
 ## Supplying the variables
 

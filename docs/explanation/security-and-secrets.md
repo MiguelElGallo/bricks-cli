@@ -4,10 +4,10 @@ icon: lucide/lock
 
 # Keeping secrets out of git
 
-A core design goal of this repo: **no Databricks workspace value and no Microsoft
-Entra username appears anywhere in git** — not the host, warehouse ID, catalog,
-account ID, or any token. This page explains the layers that make that true, so
-you can keep it true as you extend the project.
+This project keeps Databricks workspace values and Microsoft Entra usernames out
+of git — the host, warehouse ID, catalog, account ID, and any tokens are supplied
+at run time instead of committed. This page explains the layers that make that
+work, so you can keep it that way as you extend the project.
 
 ## What counts as "sensitive" here
 
@@ -28,8 +28,8 @@ you can keep it true as you extend the project.
 variables**. The two sensitive ones — `warehouse_id` and `catalog` — default to
 obvious placeholders (`REPLACE_WITH_YOUR_*`); `schema` carries the non-sensitive
 default `dbt_nyc_taxi`. The job resource references `${var.warehouse_id}` etc., so
-the real values are supplied at deploy time as `BUNDLE_VAR_*` — never written
-down. See [Bundle configuration](../reference/bundle-config.md).
+the real values are supplied at deploy time as `BUNDLE_VAR_*`. See
+[Bundle configuration](../reference/bundle-config.md).
 
 ### 2. No host in the bundle
 
@@ -40,14 +40,14 @@ the host from `DATABRICKS_HOST` or your profile, and the `prod` target uses
 ### 3. Env-var-only dbt profile
 
 `dbt_profiles/profiles.yml` reads every value from `env_var(...)`, so the
-committed file contains no host, warehouse, catalog, or token. The deployed job
-doesn't even use it — Databricks injects credentials. See
+committed file references environment variables rather than literal values. The
+deployed job doesn't even use it — Databricks injects credentials. See
 [How dbt connects to Databricks](how-dbt-connects.md).
 
 ### 4. OIDC instead of stored secrets in CI
 
 GitHub Actions authenticates with **Workload Identity Federation** — short-lived
-OIDC tokens, nothing at rest. Workspace values come from **GitHub Variables**
+OIDC tokens minted per run. Workspace values come from **GitHub Variables**
 (`vars.*`), which are configuration, not code. Setup:
 [Set up secretless CI/CD with OIDC](../how-to/set-up-oidc-cicd.md).
 
@@ -65,35 +65,11 @@ ignored so it can never be committed:
 /site/  docs/_build/    # built docs output
 ```
 
-## How to verify nothing leaked
-
-Before committing, scan the files git would actually track for the real
-identifier patterns this repo forbids — host, warehouse path, tokens, Entra
-email, and the account UUID:
-
-```bash
-git ls-files --cached --others --exclude-standard \
-  | xargs grep -nEiI \
-      -e 'adb-[0-9]+\.[0-9]+\.azuredatabricks' \
-      -e '/warehouses/[0-9a-f]{8,}' \
-      -e 'dapi[0-9a-f]{16,}' \
-      -e '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.onmicrosoft\.com' \
-      -e '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
-  || echo "clean"
-```
-
-!!! warning "This is a quick scan, not a guarantee"
-    The patterns above catch the obvious shapes, but a UUID match may be a
-    legitimate `bundle.uuid` or the fixed Azure Databricks resource ID, and a
-    **catalog name** is just a word — it has no distinctive pattern, so confirm
-    catalog names by eye. Treat a hit as "look here", and treat *no* hit as
-    "nothing obvious", not "definitely clean".
-
 !!! tip "Placeholders are intentional"
     Strings like `adb-XXXXXXXXXXXX.NN.azuredatabricks.net`,
     `<your-warehouse-id>`, `<your-catalog>`, and `you@example.onmicrosoft.com`
     are deliberate placeholders, not real values. They show the *shape* of an
-    input without revealing one.
+    input, not a real one.
 
 ## The one GitHub identity that stays
 
@@ -101,4 +77,4 @@ The repository slug `MiguelElGallo/bricks-cli` does appear — in the OIDC
 federation subject (`repo:MiguelElGallo/bricks-cli:environment:prod`) and the
 docs site config. That's the **public GitHub repository** itself, which is
 required for the federation trust. It is not a Databricks workspace value or an
-Entra username, so it's safe and necessary to keep.
+Entra username, so it stays in the repo.

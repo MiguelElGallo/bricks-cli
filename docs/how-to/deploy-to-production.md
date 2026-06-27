@@ -11,8 +11,11 @@ prefixing or paused schedules.
 
 ## From the CLI
 
-With your `BUNDLE_VAR_*` values exported (see
-[the tutorial](../tutorials/deploy-and-run.md)), swap the target to `prod`:
+Export your **production** `BUNDLE_VAR_*` values (the same variables as in
+[the tutorial](../tutorials/deploy-and-run.md)), then swap the target to `prod`.
+Because bundle targets don't isolate data, point prod at its own catalog/schema —
+for example `export BUNDLE_VAR_schema="<prod-schema>"` — rather than reusing the
+`dev` schema:
 
 ```bash
 databricks bundle validate -t prod -p bricks-demo

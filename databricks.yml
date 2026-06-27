@@ -11,12 +11,11 @@ bundle:
 include:
   - resources/*.yml
 
-# Every workspace-specific value is a bundle variable, so no real Databricks
-# environment (host, warehouse, catalog, or user) is committed to the repo.
-# Supply real values at deploy time, never in git — for example:
+# Every workspace-specific value is a bundle variable, supplied at deploy time as
+# BUNDLE_VAR_* — for example:
 #   * GitHub Actions repository variables surfaced as BUNDLE_VAR_* (see
 #     .github/workflows/), or
-#   * local BUNDLE_VAR_* env vars / a git-ignored variable-overrides file.
+#   * local BUNDLE_VAR_* env vars / a variable-overrides file.
 # The workspace host is resolved from DATABRICKS_HOST or your CLI profile.
 variables:
   warehouse_id:
@@ -29,22 +28,27 @@ variables:
     description: Schema dbt builds objects in.
     default: dbt_nyc_taxi
 
-# Deployment targets control *where* the bundle deploys. The dbt warehouse,
-# catalog and schema are set on the job's dbt task from the variables above.
+# Targets control the deployment *mode* and settings (resource naming, root path,
+# permissions) — not the workspace host, which comes from DATABRICKS_HOST or your
+# CLI profile. The dbt warehouse, catalog and schema are set on the job's dbt task
+# from the variables above, so they are the same across targets unless you override
+# BUNDLE_VAR_* per target.
 targets:
   dev:
     # 'development' mode prefixes resources with '[dev <user>]' and pauses
-    # schedules, so iterating never touches production.
+    # schedules, so the dev *job* is isolated from prod. Note: the dbt task still
+    # writes to the catalog/schema you supply, so use separate values (or
+    # per-target BUNDLE_VAR_* overrides) to isolate dev and prod *data*.
     # https://docs.databricks.com/dev-tools/bundles/deployment-modes.html
     mode: development
     default: true
-    # Host comes from DATABRICKS_HOST or your CLI profile — never committed.
+    # Host comes from DATABRICKS_HOST or your CLI profile.
 
   prod:
     mode: production
     workspace:
-      # A single, well-known copy under the deploying principal's home — no
-      # hard-coded user name.
+      # A single, well-known copy under the deploying principal's home, resolved
+      # from the current user rather than a hard-coded name.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     permissions:
       - user_name: ${workspace.current_user.userName}

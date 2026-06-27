@@ -229,8 +229,10 @@ target/
 dbt_packages/
 dbt_modules/
 logs/
+# dbt writes a per-user UUID here for anonymous usage stats — keep it out of git.
+**/.user.yml
 
-# Databricks auth / local bundle variable overrides — never commit real values
+# Databricks auth / local bundle variable overrides
 .databrickscfg
 **/variable-overrides*.json
 .env.local
