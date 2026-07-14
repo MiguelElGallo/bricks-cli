@@ -71,7 +71,7 @@ The deployed job name is `nyc_taxi_dbt_observability_collector`.
 | Field | Committed value | Meaning |
 |-------|-----------------|---------|
 | `max_concurrent_runs` | `1` | Prevents overlapping collection sweeps |
-| `timeout_seconds` | `1800` | Covers two 840-second task attempts, the retry interval, and job overhead |
+| `timeout_seconds` | `900` | Covers one 840-second task attempt and job overhead |
 | `schedule.quartz_cron_expression` | `0 0/15 * * * ?` | Starts a sweep every 15 minutes |
 | `schedule.timezone_id` | `UTC` | Stable cross-region cadence |
 | base `schedule.pause_status` | `PAUSED` | Safe by default; production target explicitly unpauses it |
@@ -97,9 +97,7 @@ The deployed job name is `nyc_taxi_dbt_observability_collector`.
       observability_volume: ${resources.volumes.dbt_artifacts.name}
       observability_staging_volume: ${resources.volumes.dbt_artifact_staging.name}
   timeout_seconds: 840
-  max_retries: 1
-  min_retry_interval_millis: 60000
-  retry_on_timeout: true
+  max_retries: 0
 ```
 
 `workspace_id` is deliberately absent from the parameters. The collector gets
@@ -110,6 +108,11 @@ processes at most 100 incomplete attempts from the 59-day lookback. Never-seen
 attempts precede least-recently-attempted retries. A failure does not stop the
 batch; the collector fails once after processing if captures failed or work was
 deferred.
+
+The collector deliberately has no in-run task retry. The first failed sweep
+therefore remains a failed Databricks job run and triggers the configured native
+failure notification. A later scheduled or manual sweep reconciles retryable
+state; terminal `NOT_PRODUCED` attempts are skipped after their one-time failure.
 
 ## Full AttemptKey and idempotency
 

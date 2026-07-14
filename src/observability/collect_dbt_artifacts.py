@@ -124,19 +124,11 @@ class CaptureContext:
 
 
 @dataclass(frozen=True)
-class DiscoveryGap:
-    """An instrumented terminal task with no discoverable attempt directory."""
-
-    job_run_id: int
-    task_run_id: int
-
-
-@dataclass(frozen=True)
 class CaptureDiscovery:
     """Staged attempts and independent gaps found from completed source runs."""
 
     contexts: tuple[CaptureContext, ...]
-    gaps: tuple[DiscoveryGap, ...]
+    gaps: tuple[CaptureContext, ...]
 
 
 @dataclass(frozen=True)
@@ -940,7 +932,7 @@ def _completed_capture_contexts(
     observed_at = now or datetime.now(timezone.utc)
     start_time_from = int((observed_at - timedelta(days=config.lookback_days)).timestamp() * 1000)
     contexts: list[tuple[int, int, CaptureContext]] = []
-    gaps: list[DiscoveryGap] = []
+    gaps: list[CaptureContext] = []
     seen_attempts: set[AttemptKey] = set()
     terminal_task_runs = {
         (attempt.job_run_id, attempt.task_run_id) for attempt in terminal_attempts
@@ -965,8 +957,24 @@ def _completed_capture_contexts(
                 if task.task_key == config.source_task_key and task.run_id is not None
             ]
             task_states = {task.run_id: _task_result_state(task) for task in source_tasks}
+            task_attempt_numbers: dict[int, int] = {}
+            for task in source_tasks:
+                task_run_id = task.run_id
+                if task_run_id is None:
+                    raise ArtifactValidationError("RUN_IDENTIFIER_INVALID")
+                attempt_number = getattr(task, "attempt_number", 0) or 0
+                if not isinstance(attempt_number, int) or attempt_number < 0:
+                    raise ArtifactValidationError("RUN_IDENTIFIER_INVALID")
+                task_attempt_numbers[task_run_id] = attempt_number
             authorized_task_run_ids = set(task_states)
-            for repair in getattr(run, "repair_history", None) or []:
+            repair_history = list(getattr(run, "repair_history", None) or [])
+            repair_anchors = [
+                (task_attempt_numbers[int(task_run_id)], repair_count)
+                for repair_count, repair in enumerate(repair_history)
+                for task_run_id in repair.task_run_ids or []
+                if int(task_run_id) in task_attempt_numbers
+            ]
+            for repair in repair_history:
                 authorized_task_run_ids.update(repair.task_run_ids or [])
             run_root = (
                 f"/Volumes/{config.catalog}/{config.schema}/{config.staging_volume}/"
@@ -1031,10 +1039,28 @@ def _completed_capture_contexts(
                     and task_run_id not in discovered_task_run_ids
                     and (parent_run_id, task_run_id) not in terminal_task_runs
                 ):
+                    attempt_number = task_attempt_numbers[task_run_id]
                     gaps.append(
-                        DiscoveryGap(
+                        CaptureContext(
+                            workspace_id=config.workspace_id,
+                            job_id=config.source_job_id,
                             job_run_id=parent_run_id,
                             task_run_id=task_run_id,
+                            repair_count=max(
+                                (
+                                    repair_count
+                                    for anchor_attempt, repair_count in repair_anchors
+                                    if anchor_attempt <= attempt_number
+                                ),
+                                default=0,
+                            ),
+                            execution_count=attempt_number + 1,
+                            task_key=config.source_task_key,
+                            upstream_result_state=task_states.get(task_run_id, "unknown"),
+                            catalog=config.catalog,
+                            schema=config.schema,
+                            volume=config.volume,
+                            staging_volume=config.staging_volume,
                         )
                     )
     except DatabricksError:
@@ -1710,12 +1736,23 @@ def main() -> None:
     cleaned = 0
     failures: list[tuple[str, str]] = []
 
-    for gap in discovery.gaps:
-        failures.append((f"job_run_id={gap.job_run_id}", "STAGING_NOT_PRODUCED"))
+    for context in discovery.gaps:
+        captured_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        _upsert_registry(
+            spark,
+            context,
+            _registry_row(
+                context,
+                captured_at=captured_at,
+                capture_status="NOT_PRODUCED",
+                capture_error_code="STAGED_ARTIFACT_NOT_PRODUCED",
+            ),
+        )
+        failures.append((f"task_run_id={context.task_run_id}", "STAGED_ARTIFACT_NOT_PRODUCED"))
         print(
             "dbt staging was not produced "
-            f"for job_run_id={gap.job_run_id}, task_run_id={gap.task_run_id}, "
-            "error_code=STAGING_NOT_PRODUCED"
+            f"for job_run_id={context.job_run_id}, task_run_id={context.task_run_id}, "
+            "error_code=STAGED_ARTIFACT_NOT_PRODUCED"
         )
 
     for context in selected_contexts:
