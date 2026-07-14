@@ -1,8 +1,8 @@
-# Deploy the bundle to the prod target on merge to main, then run the dbt job.
+# Deploy the bundle to the prod target on merge to main, then run both jobs.
 #
-# Auth via GitHub OIDC federation (see docs/how-to/set-up-oidc-cicd.md).
-# The `environment: prod` gate lets you require manual approval and scope the
-# federation policy subject to `repo:<owner>/<repo>:environment:prod`.
+# This personal Free Edition workspace has no account-level APIs, so GitHub
+# federation policies are unavailable. The protected prod environment holds a
+# rotating Databricks OAuth M2M secret for the deployment service principal.
 name: Deploy bundle (prod)
 
 concurrency: deploy-prod
@@ -13,13 +13,12 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  id-token: write   # required to mint the GitHub OIDC token
   contents: read
 
 env:
-  DATABRICKS_AUTH_TYPE: github-oidc
+  DATABRICKS_AUTH_TYPE: oauth-m2m
   DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-  DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}  # service principal UUID (not a secret)
+  DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
   # Workspace-specific values come from GitHub repository Variables. They fill
   # the bundle variables of the same name.
   BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
@@ -34,6 +33,8 @@ jobs:
     name: Deploy and run (prod)
     runs-on: ubuntu-latest
     environment: prod
+    env:
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
