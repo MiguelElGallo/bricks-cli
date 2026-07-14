@@ -4,86 +4,93 @@ icon: lucide/plug
 
 # Connect to Databricks
 
-The CLI can do nothing until it knows **which workspace** to talk to and **who
-you are**. In this step you'll set both up using your existing Azure login.
+We will sign in through the browser and save a local OAuth user-to-machine
+(U2M) profile named `bricks-demo`. The profile identifies one workspace and
+lets the CLI refresh short-lived OAuth access tokens for you.
 
-!!! info "Unified authentication"
-    Every Databricks command — including `bundle deploy` — looks for credentials
-    in the same well-defined order, so the same setup works locally and in CI.
-    The full model is explained in
-    [The authentication model](../explanation/authentication.md). For now, we'll
-    use the simplest option for Azure.
+## Copy the workspace URL
 
-## Sign in to Azure
+Open your Databricks workspace in the browser and copy its URL. An AWS Free
+Edition URL has this shape:
 
-Because the workspace is Azure Databricks and you own (or can access) the
-subscription, you can let the CLI reuse your `az` session:
+```text
+https://dbc-xxxxxxxx-xxxx.cloud.databricks.com
+```
+
+Export the complete URL, including `https://`:
 
 ```bash
-az login          # opens a browser if you're not already signed in
-az account show   # confirm you're in the right subscription
+export DATABRICKS_HOST="https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
 ```
 
-!!! tip
-    If `az account show` lists the wrong subscription, switch with
-    `az account set --subscription "<name-or-id>"` before continuing.
-
-## Create a profile
-
-Profiles live in `~/.databrickscfg`. Each one names a workspace host and how to
-authenticate. Add a profile that points at your workspace and uses Azure CLI
-auth:
-
-```ini title="~/.databrickscfg"
-[bricks-demo]
-host      = https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net
-auth_type = azure-cli
-```
-
-Replace the `host` with your own workspace URL. (1)
-{ .annotate }
-
-1.  You'll find it in the address bar when you open your workspace, or under
-    **Settings**. It looks like `https://adb-<digits>.<n>.azuredatabricks.net`.
-
-!!! note "Why `auth_type = azure-cli`?"
-    It tells the CLI to mint short-lived Microsoft Entra ID tokens from your `az`
-    session on demand. The profile itself stores only a host and an auth
-    *method*.
-
-## Prove it works
-
-Ask the workspace who you are:
+Print it once to catch a missing character:
 
 ```bash
-databricks current-user me -p bricks-demo
+printf '%s\n' "$DATABRICKS_HOST"
 ```
+
+The output should be the same workspace URL you copied.
+
+## Sign in with OAuth U2M
+
+Create the tutorial profile:
+
+```bash
+databricks auth login --host "$DATABRICKS_HOST" --profile bricks-demo
+```
+
+The CLI opens a browser. Sign in with the same identity you use for the
+workspace and approve the request. The terminal should then report:
 
 ```console
-you@example.onmicrosoft.com
+Profile bricks-demo was successfully saved
 ```
 
-!!! check "Connected!"
-    If you see your own username, the CLI is authenticated against your
-    workspace. That same identity is what will deploy the bundle in step 4.
+Databricks recommends OAuth for user authorization; the CLI handles token
+refresh through unified authentication. See
+[OAuth U2M authorization](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-u2m).
 
-??? question "Got an error instead?"
-    - **`default auth: cannot configure default credentials`** — the profile
-      name or `host` is off, or `az` isn't logged in. Re-run `az login` and
-      double-check the `-p bricks-demo` flag.
-    - **`401 Unauthorized`** — your Azure identity may not be a member of the
-      workspace yet. Ask a workspace admin to add you.
+!!! note "A personal sign-up address is not a different CLI auth type"
+    Use the browser identity that already opens the workspace. The relevant
+    boundary is the workspace and account tier, not whether that identity uses
+    a personal email address.
 
-## Recap
+## Confirm the identity
 
-You now have:
+Ask the workspace who the profile represents:
 
-- [x] an **Azure session** (`az login`),
-- [x] a **profile** in `~/.databrickscfg` that names your workspace and uses
-      `azure-cli` auth, and
-- [x] a **confirmed identity** from `databricks current-user me`.
+```bash
+databricks current-user me --profile bricks-demo --output json
+```
 
-That's the whole local setup — your Azure login is doing the work. Next, let's
-look at the dbt project you're about to deploy.
+The JSON response should contain your workspace `userName` and `active: true`.
+No personal access token is needed.
+
+## Find the tutorial inputs
+
+List the SQL warehouses:
+
+```bash
+databricks warehouses list --profile bricks-demo
+```
+
+Free Edition normally shows its single SQL warehouse. Copy the warehouse ID;
+we will export it on the deployment page.
+
+List the catalogs next:
+
+```bash
+databricks catalogs list --profile bricks-demo
+```
+
+Choose a catalog where your user can create a schema and managed Volumes, and
+copy its name. Both commands should return workspace objects without an
+authentication error.
+
+You now have three values for the next steps:
+
+- profile: `bricks-demo`;
+- SQL warehouse ID; and
+- writable Unity Catalog catalog name.
 
 [:lucide-arrow-right: Explore the dbt project](explore-the-project.md){ .md-button .md-button--primary }

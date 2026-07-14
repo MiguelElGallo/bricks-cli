@@ -4,82 +4,100 @@ icon: lucide/file-plus
 
 # Add a dbt model
 
-Extend the project beyond the single `nyc_taxi_trips` table. The mechanics are
-the same whether you add a model, a seed, or a test.
+Use this guide to add and validate one model named `long_trips`. It creates a
+reusable relation for trips lasting at least 30 minutes while preserving the
+upstream model's one-row-per-trip grain.
 
-## Add a model
+## Prerequisites
 
-1. Create a new `.sql` file under `src/models/nyc_taxi/` (or a new subfolder).
-   Reference upstream resources with `ref()`:
+Complete [Run dbt locally](run-dbt-locally.md) first. Keep its virtual
+environment and `DBT_*` variables active, and use a development schema.
 
-    ```sql title="src/models/nyc_taxi/long_trips.sql"
-    {{ config(materialized = 'table') }}
+## Create the model
 
-    select *
-    from {{ ref('nyc_taxi_trips') }}
-    where trip_minutes >= 30
-    ```
+Create `src/models/nyc_taxi/long_trips.sql` with this SQL:
 
-2. Document and test it. The project already has
-   `src/models/nyc_taxi/schema.yml` (it starts with `version: 2` and a `models:`
-   list), so **append** your new model under that existing `models:` list rather
-   than replacing the file:
+```sql title="src/models/nyc_taxi/long_trips.sql"
+{{ config(materialized = 'table') }}
 
-    ```yaml title="src/models/nyc_taxi/schema.yml (append under models:)"
-      - name: long_trips
-        description: "Trips of 30 minutes or longer."
-        columns:
-          - name: pickup_at
-            data_tests:
-              - not_null
-    ```
+with trips as (
 
-3. Build your new model — and everything upstream of it — plus tests. The `+`
-   prefix selects all ancestors, so `dbt build` loads the seed
-   (`nyc_taxi_trips_seed`), builds `nyc_taxi_trips`, then `long_trips`, and runs
-   the selected tests — all in dependency order:
+    select * from {{ ref('nyc_taxi_trips') }}
 
-    ```bash
-    dbt build --select +long_trips --profiles-dir dbt_profiles --target dev
-    ```
+)
 
-!!! tip "Materializations"
-    `+materialized` can be `table`, `view`, `incremental`, `materialized_view`,
-    `streaming_table`, or `ephemeral`. This demo defaults models to `table` (set
-    in `dbt_project.yml`); override per-model with `{{ config(...) }}`.
-
-## Add a seed
-
-1. Drop a CSV into `src/seeds/nyc_taxi/`.
-2. (Recommended) declare column types under `seeds:` in `dbt_project.yml`, the
-   same way `nyc_taxi_trips_seed` does.
-3. Load it:
-
-    ```bash
-    dbt seed --select your_new_seed --profiles-dir dbt_profiles --target dev
-    ```
-
-## Add it to the deployed selection
-
-The job deliberately runs `dbt build --select +nyc_taxi_trips`; it does not
-build the whole project. A model upstream of `nyc_taxi_trips` is selected by the
-leading `+`, but a new downstream model such as `long_trips` is not. Preview the
-selection first:
-
-```bash
-dbt list --select +nyc_taxi_trips long_trips \
-  --profiles-dir dbt_profiles --target dev
+select *
+from trips
+where trip_minutes >= 30
 ```
 
-Then extend the `--select` expression in `resources/nyc_taxi.job.yml` (or replace
-it with an intentional tag/path selector), validate the bundle, and redeploy:
+The model uses
+[`ref()`](https://docs.getdbt.com/reference/dbt-jinja-functions/ref) instead of
+a hard-coded relation, so dbt records the dependency on `nyc_taxi_trips`.
 
-```bash
-databricks bundle deploy -t dev -p bricks-demo
-databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo
+## Document and test it
+
+Append this item under the existing `models:` list in
+`src/models/nyc_taxi/schema.yml`:
+
+```yaml title="src/models/nyc_taxi/schema.yml"
+  - name: long_trips
+    description: >
+      NYC taxi trips lasting at least 30 minutes. One row per trip, filtered
+      from nyc_taxi_trips.
+    columns:
+      - name: pickup_at
+        description: "Trip start timestamp."
+        data_tests:
+          - not_null
 ```
 
-## Related
+Do not add a second `models:` key. The new item must align with the existing
+`- name: nyc_taxi_trips` item. The `not_null` assertion becomes part of the
+selected build.
 
-- [Run dbt locally](run-dbt-locally.md)
-- Reference: [The dbt job resources](../reference/job-resource.md)
+## Preview the graph
+
+List the new model and its ancestors:
+
+```bash
+dbt list \
+  --select "+long_trips" \
+  --profiles-dir dbt_profiles \
+  --target dev \
+  --output name
+```
+
+The output should include the seed, `nyc_taxi_trips`, `long_trips`, and their
+selected tests. If `long_trips` is absent, correct the file path or YAML before
+running warehouse work.
+
+## Build and inspect the model
+
+Build the model, its ancestors, and selected tests:
+
+```bash
+dbt build \
+  --select "+long_trips" \
+  --profiles-dir dbt_profiles \
+  --target dev \
+  --quiet \
+  --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
+```
+
+The command should exit with status `0`.
+
+Preview the result:
+
+```bash
+dbt show \
+  --select long_trips \
+  --limit 5 \
+  --profiles-dir dbt_profiles \
+  --target dev
+```
+
+Every displayed row should have `trip_minutes >= 30`. The model is now valid
+locally, but the deployed source job still selects its original graph. Update
+that selection separately with
+[Change the deployed dbt selection](change-the-deployed-selection.md).

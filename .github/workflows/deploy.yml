@@ -10,7 +10,16 @@ concurrency: deploy-prod
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Production operation to approve
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - freeze
 
 permissions:
   contents: read
@@ -24,35 +33,194 @@ env:
   BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
   BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
   BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
+  # Complex bundle variables cannot be supplied through BUNDLE_VAR_*. This
+  # JSON array is validated and written to the ignored target override below.
+  # Empty means no outbound email.
+  DATABRICKS_NOTIFICATION_EMAILS: ${{ vars.DATABRICKS_NOTIFICATION_EMAILS || '[]' }}
   BUNDLE_VAR_prod_deployer_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
   BUNDLE_VAR_prod_run_as_service_principal_name: ${{ vars.DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME }}
   BUNDLE_VAR_prod_collector_service_principal_name: ${{ vars.DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME }}
 
 jobs:
-  deploy:
-    name: Deploy and run (prod)
+  freeze:
+    name: Freeze recurring triggers (prod)
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'freeze'
     runs-on: ubuntu-latest
     environment: prod
-    env:
-      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: databricks/setup-cli@v1.7.0
+      - uses: databricks/setup-cli@bc7e6aabb6006d8d1758bd25ee1a100935c9cb7c # v1.7.0
         with:
           version: 1.7.0
 
+      - name: Validate freeze inputs
+        run: |
+          set -euo pipefail
+          for name in DATABRICKS_HOST DATABRICKS_CLIENT_ID
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required production input is empty: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Pause source and collector triggers
+        env:
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          source_job="$(
+            databricks jobs list \
+              --name nyc_taxi_dbt_job \
+              --output json
+          )"
+          source_job_id="$(
+            jq -er '
+              map(select(.settings.name == "nyc_taxi_dbt_job")) |
+              if length == 1 then .[0].job_id
+              else error("expected exactly one production source job") end
+            ' <<< "$source_job"
+          )"
+          collector_job="$(
+            databricks jobs list \
+              --name nyc_taxi_dbt_observability_collector \
+              --output json
+          )"
+          collector_job_id="$(
+            jq -er '
+              map(select(.settings.name == "nyc_taxi_dbt_observability_collector")) |
+              if length == 1 then .[0].job_id
+              else error("expected exactly one production collector job") end
+            ' <<< "$collector_job"
+          )"
+
+          source_settings="$(databricks jobs get "$source_job_id" --output json)"
+          collector_settings="$(databricks jobs get "$collector_job_id" --output json)"
+          source_update="$(
+            jq -cn \
+              --argjson job_id "$source_job_id" \
+              --argjson trigger \
+                "$(jq -c '.settings.trigger + {pause_status: "PAUSED"}' \
+                  <<< "$source_settings")" \
+              '{job_id: $job_id, new_settings: {trigger: $trigger}}'
+          )"
+          collector_update="$(
+            jq -cn \
+              --argjson job_id "$collector_job_id" \
+              --argjson schedule \
+                "$(jq -c '.settings.schedule + {pause_status: "PAUSED"}' \
+                  <<< "$collector_settings")" \
+              '{job_id: $job_id, new_settings: {schedule: $schedule}}'
+          )"
+
+          databricks jobs update --json "$source_update"
+          databricks jobs update --json "$collector_update"
+          databricks jobs get "$source_job_id" --output json |
+            jq -e '.settings.trigger.pause_status == "PAUSED"' >/dev/null
+          databricks jobs get "$collector_job_id" --output json |
+            jq -e '.settings.schedule.pause_status == "PAUSED"' >/dev/null
+
+          for job_id in "$source_job_id" "$collector_job_id"
+          do
+            databricks jobs list-runs \
+              --job-id "$job_id" \
+              --active-only \
+              --limit 1 \
+              --output json |
+              jq -e 'length == 0' >/dev/null
+          done
+
+          {
+            echo "### Production triggers frozen"
+            echo
+            echo "- Source job: \`$source_job_id\`"
+            echo "- Collector job: \`$collector_job_id\`"
+            echo "- Active runs: none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy and run (prod)
+    if: github.event_name == 'push' || inputs.operation == 'deploy'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - uses: databricks/setup-cli@bc7e6aabb6006d8d1758bd25ee1a100935c9cb7c # v1.7.0
+        with:
+          version: 1.7.0
+
+      - name: Validate production identity separation
+        run: |
+          set -euo pipefail
+          for name in \
+            DATABRICKS_HOST \
+            DATABRICKS_CLIENT_ID \
+            BUNDLE_VAR_warehouse_id \
+            BUNDLE_VAR_catalog \
+            BUNDLE_VAR_schema \
+            BUNDLE_VAR_prod_run_as_service_principal_name \
+            BUNDLE_VAR_prod_collector_service_principal_name
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required production input is empty: $name" >&2
+              exit 1
+            fi
+          done
+
+          runner="$BUNDLE_VAR_prod_run_as_service_principal_name"
+          collector="$BUNDLE_VAR_prod_collector_service_principal_name"
+          if [[ "$DATABRICKS_CLIENT_ID" == "$runner" || \
+                "$DATABRICKS_CLIENT_ID" == "$collector" || \
+                "$runner" == "$collector" ]]; then
+            echo "Deployer, runner, and collector identities must be pairwise distinct." >&2
+            exit 1
+          fi
+
+      - name: Configure approved notification recipients
+        run: |
+          set -euo pipefail
+          jq -e '
+            type == "array" and
+            all(.[]; type == "string" and length > 0 and length <= 254)
+          ' <<< "$DATABRICKS_NOTIFICATION_EMAILS" >/dev/null
+          mkdir -p .databricks/bundle/prod
+          jq -cn \
+            --argjson emails "$DATABRICKS_NOTIFICATION_EMAILS" \
+            '{notification_emails: $emails}' \
+            > .databricks/bundle/prod/variable-overrides.json
+
       # validate is also run implicitly by deploy; kept explicit for clear logs.
       - name: Validate
-        run: databricks bundle validate --target prod
+        env:
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          usable_principals="$(
+            databricks service-principals list \
+              --filter "permission eq 'servicePrincipal/use'" \
+              --output json
+          )"
+          jq -e \
+            --arg runner "$BUNDLE_VAR_prod_run_as_service_principal_name" \
+            --arg collector "$BUNDLE_VAR_prod_collector_service_principal_name" \
+            '
+              [.[].applicationId] as $usable |
+              ($usable | index($runner) != null) and
+              ($usable | index($collector) != null)
+            ' <<< "$usable_principals" >/dev/null
+          databricks bundle validate --target prod
 
       - name: Deploy
+        env:
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: databricks bundle deploy --target prod
 
       # Keep production code writable only by the deployer. The source identity
       # can read the dbt project; the collector can run its notebook but cannot
       # edit or manage any deployed file.
-      - name: Grant run identities access to deployed files
+      - name: Set run identity access to deployed files
+        env:
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           bundle_files=$(databricks bundle summary --target prod --output json | jq -er '.workspace.file_path')
@@ -64,11 +232,68 @@ jobs:
               {service_principal_name: $runner, permission_level: "CAN_READ"},
               {service_principal_name: $collector, permission_level: "CAN_RUN"}
             ]}')
-          databricks permissions update directories "$object_id" --json "$acl"
+          # Replace direct ACL entries so rotated runtime identities do not
+          # retain access. Parent-inherited deployer/admin access is preserved.
+          databricks permissions set directories "$object_id" --json "$acl"
 
-      # Run one dbt build, then sweep its staged artifacts into governed
-      # evidence and sanitized observability facts as the post-deploy check.
-      - name: Run dbt build and artifact collector
+      # Run one dbt build, capture it, then run the collector again. The second
+      # sweep is the production idempotency check for the same AttemptKey.
+      - name: Run dbt build and artifact collector twice
+        env:
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
-          databricks bundle run nyc_taxi_dbt_job --target prod
-          databricks bundle run dbt_observability_collector_job --target prod
+          set -euo pipefail
+          summary="$(databricks bundle summary --target prod --output json)"
+          source_job_id="$(jq -er '.resources.jobs.nyc_taxi_dbt_job.id' <<< "$summary")"
+          collector_job_id="$(jq -er '.resources.jobs.dbt_observability_collector_job.id' <<< "$summary")"
+
+          source_run="$(databricks jobs run-now "$source_job_id" \
+            --idempotency-token "source-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --timeout 100m --output json)"
+          jq -e '
+            .state.life_cycle_state == "TERMINATED" and
+            .state.result_state == "SUCCESS"
+          ' <<< "$source_run" >/dev/null || {
+            jq '{run_id, state}' <<< "$source_run" >&2
+            exit 1
+          }
+          source_run_id="$(jq -er '.run_id' <<< "$source_run")"
+          source_task_run_id="$(jq -er \
+            '.tasks[] | select(.task_key == "dbt_nyc_taxi") | .run_id' \
+            <<< "$source_run")"
+
+          collector_run_1="$(databricks jobs run-now "$collector_job_id" \
+            --idempotency-token "collector-1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --timeout 20m --output json)"
+          jq -e '
+            .state.life_cycle_state == "TERMINATED" and
+            .state.result_state == "SUCCESS"
+          ' <<< "$collector_run_1" >/dev/null || {
+            jq '{run_id, state}' <<< "$collector_run_1" >&2
+            exit 1
+          }
+          collector_run_id_1="$(jq -er '.run_id' <<< "$collector_run_1")"
+
+          collector_run_2="$(databricks jobs run-now "$collector_job_id" \
+            --idempotency-token "collector-2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --timeout 20m --output json)"
+          jq -e '
+            .state.life_cycle_state == "TERMINATED" and
+            .state.result_state == "SUCCESS"
+          ' <<< "$collector_run_2" >/dev/null || {
+            jq '{run_id, state}' <<< "$collector_run_2" >&2
+            exit 1
+          }
+          collector_run_id_2="$(jq -er '.run_id' <<< "$collector_run_2")"
+
+          {
+            echo "### Databricks acceptance runs"
+            echo
+            echo "- Source parent run: \`$source_run_id\`"
+            echo "- Source task run: \`$source_task_run_id\`"
+            echo "- Collector sweep 1: \`$collector_run_id_1\`"
+            echo "- Collector sweep 2: \`$collector_run_id_2\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf 'ACCEPTANCE_RUN_IDS source_parent=%s source_task=%s collector_1=%s collector_2=%s\n' \
+            "$source_run_id" "$source_task_run_id" \
+            "$collector_run_id_1" "$collector_run_id_2"

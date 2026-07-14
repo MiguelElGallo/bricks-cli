@@ -2,122 +2,144 @@
 icon: lucide/lock
 ---
 
-# Keeping secrets out of git
+# Security and secret boundaries
 
-This project keeps Databricks workspace values and Microsoft Entra usernames out
-of git — the host, warehouse ID, catalog, account ID, and any tokens are supplied
-at run time instead of committed. This page explains the layers that make that
-work, so you can keep it that way as you extend the project.
+This repository minimizes credential exposure and separates the workload that
+produces evidence from the workload that preserves it. Those controls are
+useful, but they are not a compliance certification and do not turn Free
+Edition storage into regulated retention.
 
-## What counts as "sensitive" here
+## Configuration is not authentication
 
-| Value | Why it's kept out |
-|-------|-------------------|
-| Workspace host (`adb-….azuredatabricks.net`) | Identifies a specific tenant/workspace |
-| SQL warehouse ID | Points at specific compute |
-| Unity Catalog catalog | Names a specific data namespace |
-| Account ID (UUID) | Used in OIDC; identifies the account |
-| Microsoft Entra username / email | Personal identity |
-| PATs / client secrets / tokens | Credentials |
+The deployment needs several workspace-specific values:
 
-## The layers
+| Value | Stored as | Reason |
+|---|---|---|
+| Workspace host | GitHub repository variable or local profile | Selects a workspace |
+| Warehouse, catalog, schema | GitHub repository variables or local environment | Selects data and compute |
+| Service-principal application IDs | GitHub repository variables | Identifies deployer and runtime identities |
+| Deployer client secret | Protected GitHub `prod` environment secret | Authenticates OAuth M2M |
+| Local OAuth credential | Local Databricks credential cache | Authenticates a human through U2M |
 
-### 1. Bundle variables instead of literals
+Repository variables are not treated as credentials, but keeping real workspace
+identifiers out of source still reduces accidental disclosure and prevents the
+example from being tied to one workspace.
 
-`databricks.yml` declares workspace and observability settings as **bundle
-variables**. The two sensitive ones — `warehouse_id` and `catalog` — default to
-obvious placeholders (`REPLACE_WITH_YOUR_*`); `schema` carries the non-sensitive
-default `dbt_nyc_taxi`. Observability schema, Volumes, duration threshold, and
-notification settings have non-sensitive defaults. The job resources reference
-`${var.warehouse_id}` etc., so real values are supplied at deploy time as
-`BUNDLE_VAR_*` or an ignored target override file. See
-[Bundle configuration](../reference/bundle-config.md).
+The deployment client secret is different: it is confidential, must have a
+bounded lifetime, and must be rotated. It never belongs in a repository
+variable, bundle override file, workflow command, or job parameter.
 
-### 2. No host in the bundle
+## Four layers keep credentials out of git
 
-There is intentionally no `workspace.host` in `databricks.yml`. The CLI resolves
-the host from `DATABRICKS_HOST` or your profile, and the `prod` target uses
-`${workspace.current_user.userName}` rather than a hard-coded name.
+### Bundle variables
 
-### 3. Env-var-only dbt profile
+`databricks.yml` references `${var.*}` rather than embedding workspace values.
+Production identity variables have no defaults, so a production deployment
+cannot silently inherit the human deployer's identity.
 
-`dbt_profiles/profiles.yml` reads every value from `env_var(...)`, so the
-committed file references environment variables rather than literal values. The
-deployed job doesn't even use it — Databricks injects credentials. See
-[How dbt connects to Databricks](how-dbt-connects.md).
+### No hard-coded workspace host
 
-### 4. OIDC instead of stored secrets in CI
+The CLI resolves the host from `DATABRICKS_HOST` or a local profile. The bundle
+does not commit `workspace.host`.
 
-GitHub Actions authenticates with **Workload Identity Federation** — short-lived
-OIDC tokens minted per run. Workspace values come from **GitHub Variables**
-(`vars.*`), which are configuration, not code. Setup:
-[Set up secretless CI/CD with OIDC](../how-to/set-up-oidc-cicd.md).
+### Environment-only local dbt profile
 
-### 5. `.gitignore` as a backstop
+`dbt_profiles/profiles.yml` reads `DBT_HOST`, `DBT_HTTP_PATH`,
+`DBT_CATALOG`, `DBT_SCHEMA`, and `DBT_ACCESS_TOKEN` from the process
+environment. A short-lived U2M token should be exported only for the local
+process that needs it.
 
-Local state that *does* contain real values (because tools write it there) is
-ignored so it can never be committed:
+### Ignored local state
 
-```text
-.databricks/            # bundle state — includes host + your user
-.databrickscfg          # CLI profiles
-.venv/  target/  logs/  dbt_packages/
-**/variable-overrides*.json   # local bundle variable overrides
-.env.local  *.local.yml  *.local.yaml
-/site/  docs/_build/    # built docs output
-```
+Generated bundle state, local profiles, dbt targets, local override files, and
+environment files remain ignored. `.gitignore` is a backstop, not permission to
+place secrets in those files indefinitely.
 
-### 6. Raw evidence stays governed
+## The production identity split
 
-The source writes `manifest.json` and `run_results.json` into a short-lived
-staging Volume through dbt's `--target-path`. The collector reads exactly those
-two completed files and creates a deterministic canonical tar in a separate
-evidence Volume. Both JSON artifacts can contain identifiers and operational
-metadata, so both Volumes remain restricted. The collector normalizes only an
-allowlist of run keys, versions, statuses, counts, durations, node identifiers,
-failures, and rows affected.
+Production uses three service principals:
 
-Routine operators consume five sanitized views. They should not receive direct
-`READ VOLUME` on either Volume or base-table access. Invalid artifact pairs go
-to a separate `quarantine/` path and are represented by an allowlisted error
-code rather than their raw message.
+| Identity | Trust placed in it |
+|---|---|
+| Deployer | Can change the deployed definition and grants |
+| Source runner | Can execute dbt, modify the dbt target, and write staging |
+| Collector | Can inspect completed runs and preserve evidence |
 
-Production separates three service principals: the OIDC deployer, the source
-dbt runner, and the collector. The source runner receives `READ VOLUME` and
-`WRITE VOLUME` only on staging so dbt can use its target directory during the
-invocation. The collector receives `CAN_VIEW` on the source job, read/write on
-staging for reconciliation, and read/write on the evidence Volume. The dbt
-runner therefore cannot access or rewrite its own durable evidence.
-Parent-catalog, SQL warehouse, target-dbt-schema, and `system.lakeflow` access
-remain administrator-controlled prerequisites. Because catalog/schema
-privileges inherit, the deployment runbook requires `SHOW GRANTS` checks for
-the schema, both Volumes, base tables, and curated views.
+The source runner has no access to the evidence Volume or observability base
+tables. The collector can read and delete reconciled staging and write evidence,
+but does not need to modify the dbt target. Runtime identities receive only
+`CAN_READ` or `CAN_RUN` on deployed files, not editor or manager access.
 
-The evidence path is content-addressed and verified by SHA-256, which makes
-unexpected change detectable at the application layer. A managed Volume is not
-WORM storage; write-once retention requires a separate approved control.
+This separation limits post-capture rewriting by the observed workload. It does
+not make source-produced JSON trustworthy before capture.
 
-### 7. No external telemetry
+## Raw evidence and sanitized views have different audiences
 
-`dbt_project.yml` sets `send_anonymous_usage_stats: false`. Job history comes
-from native Lakeflow system tables, artifacts remain in Unity Catalog, and
-failure/duration alerts use native Lakeflow email only when an approved internal
-distribution list is configured. No webhook, OpenLineage collector, or external
-telemetry SaaS is part of this repository.
+`manifest.json` and `run_results.json` can include relation names, compiled SQL,
+arguments, messages, adapter metadata, and other operational context. Staging,
+canonical archives, quarantine, and the three base Delta tables therefore
+remain restricted.
 
-See [Observe dbt jobs](../how-to/observe-dbt-jobs.md) for the access boundary and
-verification queries.
+Routine operators use:
 
-!!! tip "Placeholders are intentional"
-    Strings like `adb-XXXXXXXXXXXX.NN.azuredatabricks.net`,
-    `<your-warehouse-id>`, `<your-catalog>`, and `you@example.onmicrosoft.com`
-    are deliberate placeholders, not real values. They show the *shape* of an
-    input, not a real one.
+- two guaranteed sanitized views: `dbt_run_health` and `dbt_node_health`; and
+- three optional Lakeflow-enriched views when the collector can read
+  `system.lakeflow`.
 
-## The one GitHub identity that stays
+Operators should not receive `READ VOLUME` on staging or evidence, or direct
+`SELECT` on the base tables merely to inspect run health.
 
-The repository slug `MiguelElGallo/bricks-cli` does appear — in the OIDC
-federation subject (`repo:MiguelElGallo/bricks-cli:environment:prod`) and the
-docs site config. That's the **public GitHub repository** itself, which is
-required for the federation trust. It is not a Databricks workspace value or an
-Entra username, so it stays in the repo.
+## Hashing is integrity evidence, not provenance
+
+The collector builds a deterministic two-file archive, addresses it by SHA-256,
+writes without overwrite, and verifies the stored bytes. That makes unexpected
+post-capture change detectable at the application layer.
+
+The source runner still controls the JSON before capture and supplies the repair
+and execution labels in the staging path. A compromised producer can therefore
+produce false but internally consistent input. A threat model requiring
+malicious-producer resistance needs an independently trusted signing or
+attestation control.
+
+The evidence Volume is also mutable by sufficiently privileged identities.
+Unity Catalog governance and hashes do not make it WORM storage. A legal
+write-once requirement needs a separately approved retention control.
+
+## Native observability does not mean unrestricted observability
+
+The repository sends no job telemetry to an external platform. dbt anonymous
+usage statistics are disabled. The Jobs API performs discovery, Unity Catalog
+stores the facts and evidence, and native job notifications can alert approved
+internal recipients.
+
+The notification list defaults to empty. Until recipients are explicitly
+approved and configured, the jobs have notification capability but send no
+failure or duration email.
+
+Optional system-table views require broader operational read access and can lag.
+Failure to refresh them does not fail artifact capture.
+
+## Free Edition is a validation boundary
+
+The current AWS Free Edition workspace is suitable for learning and
+non-commercial functional validation. Databricks documents that Free Edition
+does not provide compliance enforcement, security customization, private
+networking, an SLA, or support. It may stop compute under fair-use limits and
+may delete an account after prolonged inactivity. Databricks also describes
+Free Edition for exploratory datasets and reserves the right to train on
+uploaded data.
+
+Use only the included public demonstration data. Never upload Personal Data,
+confidential, proprietary, or regulated data to this personal workspace, and do
+not treat its managed Volume as durable retention.
+
+Therefore this repository demonstrates patterns that can be evaluated for a
+regulated deployment; it is not itself evidence that a regulated production
+environment exists. See
+[Databricks Free Edition limitations](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations).
+See also the [Free Edition comparison](https://docs.databricks.com/aws/en/getting-started/free-trial-vs-free-edition).
+
+Operational procedures are in
+[Set up M2M CI/CD](../how-to/set-up-m2m-cicd.md),
+[Rotate the deployer secret](../how-to/rotate-the-deployer-secret.md), and
+[Repair production runtime file access](../how-to/grant-production-runtime-access.md).

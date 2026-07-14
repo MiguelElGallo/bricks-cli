@@ -4,86 +4,112 @@ icon: lucide/package
 
 # Why Declarative Automation Bundles
 
-> **Is a bundle still the way to go?** Yes. This page is the long answer.
+A Declarative Automation Bundle packages source code and Databricks workspace
+resources as one versioned deployment unit. It gives this repository a
+reviewable description of both dbt execution and the observability controls
+around it.
 
-## What a bundle is
+Databricks previously called the feature **Databricks Asset Bundles**. The CLI
+and current documentation use **Declarative Automation Bundles**.
 
-A **Declarative Automation Bundle** — the feature historically called *Databricks
-Asset Bundles* — expresses a "data/AI/analytics project as code": your source
-plus the Databricks resources that run it (jobs, pipelines, …), described in YAML
-and deployed with `databricks bundle`. It is the **first-party, recommended** unit
-of deployment for Databricks and is built into the CLI — nothing extra to install.
+## The boundary of a bundle
 
-## Direct deployment: no Terraform required
-
-Historically, a bundle deploy delegated to an embedded Terraform provider. The
-latest CLI ships a **direct deployment** engine that calls the Databricks APIs
-itself, removing the Terraform dependency. That is exactly the promise in this
-repo's name: *"the new Databricks CLI that does not need Terraform."*
-
-Practical effects:
-
-- No Terraform binary, provider download, or `.tf` state to manage.
-- `databricks bundle deploy` / `plan` / `destroy` operate directly on the APIs.
-- Infrastructure that genuinely needs Terraform (VNets, the workspaces
-  themselves) is still Terraform's job — bundles deploy **code and workspace
-  resources**, not the cloud account underneath.
+A bundle deploys workspace resources such as jobs, schemas, Volumes, files, and
+their declared permissions. It does not create the Databricks account,
+workspace, networking, SQL warehouse, or parent Unity Catalog catalog.
 
 ```mermaid
 flowchart LR
-    subgraph then["Before"]
-        cli1["databricks bundle deploy"] --> tf["Terraform provider"] --> api1["Databricks APIs"]
-    end
-    subgraph now["Now (latest CLI)"]
-        cli2["databricks bundle deploy"] --> api2["Databricks APIs"]
-    end
+    git["Git repository"] --> bundle["databricks bundle deploy"]
+    bundle --> files["Workspace files"]
+    bundle --> jobs["Source + collector jobs"]
+    bundle --> uc["Observability schema + Volumes"]
+
+    admin["Administrator prerequisites"] --> warehouse["SQL warehouse"]
+    admin --> catalog["Parent catalog + target schema"]
+    admin --> identities["Service principals + entitlements"]
 ```
 
-## Why bundles over rolling your own
+That boundary explains why some production access is declared in
+`databricks.yml` while other access belongs in an administrator runbook.
 
-| Concern | Bundles give you |
-|---------|------------------|
-| Reproducibility | One declarative source of truth, versioned in Git |
-| Environments | `targets` (dev/prod) with per-target overrides |
-| Safety | `development` mode isolates and prefixes resources, pauses schedules |
-| CI/CD | `validate` → `deploy` → `run` map cleanly onto pipeline stages |
-| Drift / cleanup | `summary`, `plan`, and `destroy` |
+## Why the repository uses a bundle
 
-## Deployment modes (why `dev` is safe)
+The configuration keeps several relationships together:
 
-`mode: development` (the default `dev` target):
+- the source job writes dbt artifacts to the staging Volume;
+- the collector can view the source job and reconcile that staging;
+- the source and collector use different `run_as` identities;
+- the runner cannot access the evidence Volume;
+- production schedules and lifecycle protections differ from development; and
+- bundle variables carry workspace-specific identifiers without committing
+  their values.
 
-- prefixes deployed resources with `[dev <your-username>]`,
-- **pauses** schedules/triggers so nothing fires while you iterate,
-- marks resources as development copies so they're easy to find and clean up.
+Reviewing those relationships in one change is safer than maintaining unrelated
+deployment scripts for each resource.
 
-`mode: production` (the `prod` target) deploys "for real" to a fixed `root_path`
-under the deploying principal's home directory (the service principal's in CI) and
-applies the permissions you declare.
+## Direct deployment
 
-This is why the [tutorial](../tutorials/deploy-and-run.md) deploys to `dev` first:
-you can experiment with the *jobs* without disturbing the prod deployment. Dev mode
-isolates the job resources, not the data — the dbt task writes to whatever
-catalog/schema you supply, so use separate schemas to keep dev and prod tables
-apart.
+Current Databricks CLI bundle commands use the direct deployment engine. The CLI
+calls Databricks APIs without requiring a user-managed Terraform binary,
+provider, or Terraform state file.
 
-## How it maps to this repo
+```mermaid
+flowchart LR
+    cli["Databricks CLI"] --> validate["bundle validate"]
+    validate --> plan["bundle plan"]
+    plan --> deploy["bundle deploy"]
+    deploy --> api["Databricks workspace APIs"]
+```
 
-`databricks.yml` is the root. `resources/nyc_taxi.job.yml` defines the serverless
-dbt source job, `resources/dbt_observability_collector.job.yml` defines the
-independent scheduled collector, and
-`resources/observability.infrastructure.yml` defines the governed schema plus
-staging and evidence managed Volumes. The field-by-field details are in
-[Bundle configuration](../reference/bundle-config.md) and
-[The dbt job resources](../reference/job-resource.md).
+Terraform can still be appropriate for account- or cloud-level infrastructure.
+It is simply outside this repository's workspace deployment boundary.
 
-## Sources
+## What deployment modes do
 
-- Databricks CLI bundle help (`databricks bundle --help`) — *"Declarative
-  Automation Bundles let you express data/AI/analytics projects as code."*
-- Microsoft Learn:
-  [Databricks Asset Bundles](https://learn.microsoft.com/azure/databricks/dev-tools/bundles/)
-  and the
-  [release notes](https://learn.microsoft.com/azure/databricks/release-notes/dev-tools/bundles)
-  (direct deployment, GA).
-- The CLI's own `dbt-sql` bundle template, which this project is modelled on.
+Development mode creates user-scoped resource names and pauses schedules.
+Production mode uses stable resource names, a stable workspace root, explicit
+`run_as` identities, unpaused collection, and `prevent_destroy` on evidence
+resources.
+
+Modes do not automatically isolate data. Both targets write to the catalog,
+schema, and warehouse supplied through bundle variables. Separate development
+and production values are therefore required.
+
+See [Development and production are different controls](development-vs-production.md)
+for the reasoning behind those boundaries.
+
+## Why deployment includes an ACL reconciliation step
+
+The production bundle root is writable only by the deployer. The job identities
+must still be able to use the files deployed there. After `bundle deploy`, the
+workflow resolves the deployed files directory and applies:
+
+- `CAN_READ` to the source runner; and
+- `CAN_RUN` to the collector.
+
+This is deliberately narrower than making the runtime identities editors or
+managers. It also means `bundle deploy` alone is not the complete production
+operation; the protected workflow owns the post-deploy reconciliation.
+
+## What bundles do not prove
+
+A successful bundle deployment proves that the declared workspace resources
+were accepted. It does not prove:
+
+- that the warehouse and external catalog grants are correct;
+- that a job run succeeded;
+- that optional system tables are available;
+- that evidence meets a regulatory retention standard; or
+- that a Free Edition workspace is production-ready.
+
+Those assertions require separate verification. The repository treats its AWS
+Free Edition deployment as non-commercial functional validation, consistent
+with the official
+[Free Edition limitations](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations).
+
+Read the official
+[Declarative Automation Bundles documentation](https://docs.databricks.com/aws/en/dev-tools/bundles/)
+for the product boundary and
+[Deploy to production](../how-to/deploy-to-production.md) for this repository's
+controlled path.

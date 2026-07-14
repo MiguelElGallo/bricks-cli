@@ -1708,9 +1708,11 @@ def main() -> None:
             config,
             registry_state.terminal_attempts,
         )
-    except ArtifactValidationError:
+    except ArtifactValidationError as exc:
         _create_curated_views(spark, config)
-        raise RuntimeError("completed source dbt runs could not be enumerated") from None
+        raise RuntimeError(
+            f"completed source dbt runs could not be enumerated; error_code={exc.code}"
+        ) from None
 
     contexts = list(discovery.contexts)
     incomplete_contexts = [
@@ -1718,8 +1720,16 @@ def main() -> None:
         for context in contexts
         if context.attempt_key not in registry_state.terminal_attempts
     ]
-    # Never-seen runs are captured before retries so a permanent historical gap
-    # cannot starve fresh evidence. Retried gaps are least-recently-attempted first.
+    # Missing staging is made explicit before staged capture so an evidence gap
+    # cannot be silently starved. Both kinds of attempt share the same bounded
+    # batch; later scheduled sweeps drain any deferred work.
+    gap_contexts = list(discovery.gaps)
+    selected_gaps = gap_contexts[: config.max_task_runs_per_sweep]
+    remaining_budget = config.max_task_runs_per_sweep - len(selected_gaps)
+
+    # Never-seen staged runs are captured before retries so a permanent
+    # historical retry cannot starve fresh evidence. Retried contexts are
+    # least-recently-attempted first.
     unseen_contexts = [
         context
         for context in incomplete_contexts
@@ -1731,12 +1741,12 @@ def main() -> None:
         if context.attempt_key in registry_state.last_attempted_at
     ]
     retry_contexts.sort(key=lambda context: registry_state.last_attempted_at[context.attempt_key])
-    selected_contexts = (unseen_contexts + retry_contexts)[: config.max_task_runs_per_sweep]
+    selected_contexts = (unseen_contexts + retry_contexts)[:remaining_budget]
     captured = 0
     cleaned = 0
     failures: list[tuple[str, str]] = []
 
-    for context in discovery.gaps:
+    for context in selected_gaps:
         captured_at = datetime.now(timezone.utc).replace(tzinfo=None)
         _upsert_registry(
             spark,
@@ -1820,18 +1830,27 @@ def main() -> None:
     _create_curated_views(spark, config)
 
     terminal_skipped = len(contexts) - len(incomplete_contexts)
-    deferred = len(incomplete_contexts) - len(selected_contexts)
+    deferred = (
+        len(gap_contexts) - len(selected_gaps) + len(incomplete_contexts) - len(selected_contexts)
+    )
     print(
         "dbt artifact sweep finished "
         f"source_job_id={config.source_job_id}, discovered={len(contexts)}, "
         f"discovery_gaps={len(discovery.gaps)}, "
-        f"terminal_skipped={terminal_skipped}, attempted={len(selected_contexts)}, "
+        f"gaps_recorded={len(selected_gaps)}, terminal_skipped={terminal_skipped}, "
+        f"attempted={len(selected_gaps) + len(selected_contexts)}, "
         f"captured={captured}, cleaned={cleaned}, failed={len(failures)}, "
         f"deferred={deferred}"
     )
     if failures or deferred:
         gaps = len(failures) + deferred
-        raise RuntimeError(f"dbt artifact capture incomplete for {gaps} task run(s)")
+        error_codes = {code for _, code in failures}
+        if deferred:
+            error_codes.add("BATCH_DEFERRED")
+        raise RuntimeError(
+            f"dbt artifact capture incomplete for {gaps} task run(s); "
+            f"error_codes={','.join(sorted(error_codes))}"
+        )
 
 
 if __name__ == "__main__":

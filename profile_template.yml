@@ -6,9 +6,9 @@ fixed:
   type: databricks
 prompts:
   host:
-    hint: 'workspace host, e.g. adb-XXXXXXXXXXXX.NN.azuredatabricks.net'
+    hint: 'workspace host, e.g. dbc-XXXXXXXX-XXXX.cloud.databricks.com'
   token:
-    hint: 'access token: a short-lived Entra token from `az account get-access-token` (preferred), or a Databricks PAT'
+    hint: 'short-lived access token from `databricks auth token <profile> --output json`'
     hide_input: true
   http_path:
     hint: 'HTTP path of SQL warehouse, e.g. /sql/1.0/warehouses/XXXXXXXXXXXXXXXX'

@@ -4,10 +4,10 @@ icon: lucide/lightbulb
 
 # Explanation
 
-Background and design rationale. These pages don't tell you *how* to do a task —
-they help you understand *why* the project is built the way it is, so the
-[how-to guides](../how-to/index.md) and [reference](../reference/index.md) make
-sense.
+These pages describe why the project is built this way. Use a
+[how-to guide](../how-to/index.md) when you already have a task to complete, and
+use the [reference](../reference/index.md) when you need exact fields or
+commands.
 
 <div class="grid cards" markdown>
 
@@ -15,28 +15,49 @@ sense.
 
     ---
 
-    What a bundle is, and why "direct deployment" (no Terraform) is the answer to
-    this repo's central question.
+    What the bundle deploys, what remains an administrator prerequisite, and why
+    deployment includes an ACL reconciliation step.
 
 -   :lucide-key-round: **[The authentication model](authentication.md)**
 
     ---
 
-    How unified auth resolves credentials, and why this repo uses Azure CLI
-    locally and OIDC in CI.
+    Why humans use OAuth U2M, GitHub uses OAuth M2M, and OIDC is unavailable on
+    this Free Edition account.
 
 -   :lucide-cable: **[How dbt connects to Databricks](how-dbt-connects.md)**
 
     ---
 
-    The deployed job, local runs, and in-platform collector use different
-    connection paths — and why the job omits `--target`.
+    How local dbt, the deployed source job, and the collector receive different
+    credentials and permissions.
 
--   :lucide-lock: **[Keeping secrets out of git](security-and-secrets.md)**
+-   :lucide-git-compare-arrows: **[Development and production are different controls](development-vs-production.md)**
 
     ---
 
-    The layered approach — bundle variables, env vars, GitHub Variables, OIDC,
-    `.gitignore` — that keeps every workspace value out of the repo.
+    What bundle modes isolate, what they do not isolate, and why a production
+    target does not make Free Edition production-ready.
+
+-   :lucide-activity: **[Why observability stays inside Databricks](native-observability.md)**
+
+    ---
+
+    How Jobs state, dbt artifacts, Unity Catalog facts, and optional system
+    tables complement one another.
+
+-   :lucide-archive: **[The evidence lifecycle](evidence-lifecycle.md)**
+
+    ---
+
+    How staged artifacts become deterministic evidence, how terminal states and
+    cleanup differ, and where the producer trust boundary remains.
+
+-   :lucide-lock: **[Security and secret boundaries](security-and-secrets.md)**
+
+    ---
+
+    The three-identity model, protected M2M secret, restricted raw evidence, and
+    limits of hashing and managed Volumes.
 
 </div>

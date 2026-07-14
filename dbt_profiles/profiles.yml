@@ -7,7 +7,8 @@
 #
 # For local runs, export the variables below yourself, then:
 #   dbt build --profiles-dir dbt_profiles --target dev
-# See docs for how to mint a short-lived Entra ID token for DBT_ACCESS_TOKEN.
+# See docs for how to mint a short-lived token from a Databricks OAuth U2M
+# profile for DBT_ACCESS_TOKEN.
 bricks_cli_dbt:
   target: dev
   outputs:

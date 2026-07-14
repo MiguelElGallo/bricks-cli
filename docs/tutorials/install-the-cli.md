@@ -4,86 +4,57 @@ icon: lucide/download
 
 # Install the Databricks CLI
 
-The first step is to get the **Databricks CLI** — a single, dependency-free
-binary that talks to the Databricks REST APIs and drives Declarative Automation
-Bundles. The same binary works on Azure, AWS, and GCP; this tutorial targets
-**Azure Databricks**.
+We will install the current Databricks CLI, verify it, and clone this
+repository. This tutorial uses the modern Go-based CLI, not the legacy Python
+package named `databricks-cli`.
 
-!!! warning "Use the new CLI, not the legacy one"
-    The old "legacy" Databricks CLI was a Python package
-    (`pip install databricks-cli`). The current CLI is a **Go binary** from
-    [github.com/databricks/cli](https://github.com/databricks/cli). Bundles
-    require the new binary — that's the one you want.
+## Install the CLI
 
-## Install it
+In a macOS terminal, install the official Homebrew formula directly from the
+Databricks tap:
 
-Pick whichever line fits your machine. They all give you the same binary.
+```bash
+brew install databricks/tap/databricks
+```
 
-=== "Homebrew (macOS / Linux)"
+Homebrew should finish with a successful installation summary and no error.
+This is one of the installation methods in the official
+[Databricks CLI installation guide](https://docs.databricks.com/aws/en/dev-tools/cli/install).
 
-    ```bash
-    brew tap databricks/tap
-    brew install databricks
-    ```
+## Check the version
 
-=== "Install script"
-
-    ```bash
-    curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-    ```
-
-=== "Direct download"
-
-    Grab a specific release binary from the
-    [releases page](https://github.com/databricks/cli/releases) and put it on
-    your `PATH`.
-
-!!! tip "Pinning a version"
-    For reproducible deployments, pin an exact version — that's what the CI in
-    this repo does (`databricks/setup-cli` with a fixed `version:`). You'll see
-    it again when we [set up CI/CD](../how-to/set-up-oidc-cicd.md).
-
-## Check it
-
-Now confirm the binary is on your `PATH`:
+Run:
 
 ```bash
 databricks version
 ```
 
-You should see something like:
+You should see a modern CLI version, for example:
 
 ```console
 Databricks CLI v1.7.0
 ```
 
-!!! check "That's it"
-    If you got a version number back, the CLI is installed and ready. If your
-    shell says `command not found`, open a new terminal (so it picks up the
-    updated `PATH`) and try again.
+The exact current version can be newer. A version beginning with `v1.` confirms
+that this tutorial's CLI is installed.
 
-## A quick look around
+## Clone the repository
 
-The CLI groups commands by area — run `databricks --help` to see them. The group
-you'll use throughout this guide is `bundle`, which deploys the project:
+Move to a directory where you keep source code, then clone and enter the
+project:
 
 ```bash
-databricks bundle --help
+git clone https://github.com/MiguelElGallo/bricks-cli.git
+cd bricks-cli
 ```
 
-!!! info "Want the full list?"
-    The [CLI commands reference](../reference/cli-commands.md) lists the command
-    groups you'll use here and the handy global flags (`-o json`, `--debug`).
+Confirm that you are at the bundle root:
 
-## Recap
+```bash
+test -f databricks.yml && test -f dbt_project.yml && pwd
+```
 
-In this step you:
-
-- [x] learned the difference between the **legacy** and the **new** CLI,
-- [x] **installed** the new binary, and
-- [x] **confirmed** it with `databricks version`.
-
-Next, you'll point the CLI at a workspace and prove who you are using your Azure
-login.
+The command should print a path ending in `/bricks-cli`. You now have both the
+bundle definition and the dbt project in your working directory.
 
 [:lucide-arrow-right: Connect to Databricks](connect-to-databricks.md){ .md-button .md-button--primary }

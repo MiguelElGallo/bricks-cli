@@ -1,117 +1,113 @@
 ---
 icon: lucide/database
-hide:
-  - navigation
 ---
 
-# bricks-cli
+# Databricks-native dbt observability
 
-A small, end-to-end reference for deploying a [dbt](https://www.getdbt.com/)
-project to **Azure Databricks** using the latest **Databricks CLI** and
-**Declarative Automation Bundles (DABs)** — the bundle's *direct deployment*
-engine, so **no Terraform is required**.
+Deploy dbt Core, preserve per-attempt evidence, and query sanitized health facts
+without sending operational telemetry to another platform. This site documents
+the complete reference implementation in this repository.
 
-The dbt scope is deliberately tiny so the deployment mechanics stay front and
-centre: **one seed → one table.** A 100-row extract of the public
-`samples.nyctaxi.trips` table is committed as a dbt seed and materialized into a
-Delta table by a single dbt model.
+!!! danger "Free Edition is not a regulated production environment"
 
-It also includes a **Databricks-only observability path** for regulated
-environments: dbt stages two JSON artifacts in a governed Unity Catalog Volume,
-an independent collector creates a deterministic content-addressed archive, and
-operators use sanitized Delta health views. dbt anonymous usage reporting is
-disabled and no external telemetry platform or cloud-specific monitoring
-service is required.
+    The tested workspace is AWS Databricks Free Edition. It is useful for
+    functional validation, but it is non-commercial and lacks compliance
+    enforcement, security customization, private networking, account-level
+    APIs, an SLA, and support. Apply the design only inside your organization's
+    approved Databricks account, retention controls, notification channels, and
+    operating procedures.
+
+    Use only the included public demonstration data in this personal workspace.
+    Never upload Personal Data, confidential, proprietary, or regulated data to
+    Free Edition. Databricks documents it for exploratory datasets and reserves
+    the right to train on uploaded data.
+
+## The outcome
 
 ```mermaid
 flowchart LR
-    subgraph repo["This repo (a Declarative Automation Bundle)"]
-        seed["seed CSV<br/>nyc_taxi_trips_seed"]
-        model["model (table)<br/>nyc_taxi_trips"]
-        job["source dbt job"]
-        seed --> model
-    end
-    cli["Databricks CLI<br/>bundle validate / deploy / run"]
-    repo -->|databricks bundle deploy| cli
-    cli --> ws["Databricks workspace"]
-    ws --> wh["Serverless SQL warehouse"]
-    job -->|"one dbt build"| wh
-    wh --> tbl["&lt;catalog&gt;.dbt_nyc_taxi.nyc_taxi_trips"]
-    job -->|"--target-path"| staging["staging Volume<br/>manifest + run results"]
-    schedule["every 15 minutes"] --> collector["independent collector job"]
-    collector -->|"Jobs API: completed runs"| job
+    source["Source job<br/>dbt build"] --> warehouse["SQL warehouse"]
+    source --> staging["Attempt staging<br/>manifest + run results"]
+    collector["Collector job<br/>every 15 minutes"] -->|"completed runs"| source
     staging --> collector
-    collector --> evidence["canonical archive + sanitized Delta health views"]
-    system["system.lakeflow"] --> evidence
+    collector --> archive["Deterministic evidence archive"]
+    collector --> base["Restricted Delta tables"]
+    base --> health["Sanitized health views"]
+    lakeflow["Optional system.lakeflow"] -.-> health
 ```
 
-!!! tip "New here? Start with the tutorial."
-    The [Tutorial - User Guide](tutorials/index.md) walks you from an empty
-    terminal to a dbt job running on Databricks, one small step at a time.
+The source job reports the dbt result. The collector reports capture, validation,
+cleanup, and backlog failures independently. Each attempt is keyed by workspace,
+job, parent run, repair, task run, and execution, so retries cannot overwrite one
+another.
 
-## Find your way around
-
-This documentation follows the [Diátaxis](https://diataxis.fr/) framework. The
-four sections answer four different questions, so pick the one that matches what
-you need right now.
+## Choose your path
 
 <div class="grid cards" markdown>
 
--   :lucide-graduation-cap: **Tutorial**
+-   :material-school:{ .lg .middle } **Learn by doing**
 
     ---
 
-    *Learning-oriented.* A guided, hands-on lesson that takes you from zero to a
-    deployed, running dbt job. Start here if you're new.
+    Authenticate, deploy the development target, run dbt, and observe your first
+    governed capture.
 
-    [:lucide-arrow-right: Tutorial - User Guide](tutorials/index.md)
+    [:octicons-arrow-right-24: Start the tutorial](tutorials/index.md)
 
--   :lucide-wrench: **How-to guides**
-
-    ---
-
-    *Task-oriented.* Short recipes for specific jobs — run dbt locally, observe
-    jobs, set up CI/CD, deploy to production.
-
-    [:lucide-arrow-right: How-to guides](how-to/index.md)
-
--   :lucide-book-open: **Reference**
+-   :material-tools:{ .lg .middle } **Complete a task**
 
     ---
 
-    *Information-oriented.* The dry facts: CLI commands, bundle fields, the dbt
-    job resource, every configuration value, and the project layout.
+    Configure M2M deployment, rotate a secret, query health, grant access, or
+    investigate a failure.
 
-    [:lucide-arrow-right: Reference](reference/index.md)
+    [:octicons-arrow-right-24: Open the how-to guides](how-to/index.md)
 
--   :lucide-lightbulb: **Explanation**
+-   :material-book-open-variant:{ .lg .middle } **Look up a contract**
 
     ---
 
-    *Understanding-oriented.* The "why" behind the design: bundles, the
-    authentication model, how dbt connects, and keeping secrets out of git.
+    Find exact variables, commands, permissions, job settings, schemas, states,
+    limits, and error codes.
 
-    [:lucide-arrow-right: Explanation](explanation/index.md)
+    [:octicons-arrow-right-24: Consult the reference](reference/index.md)
+
+-   :material-lightbulb-on-outline:{ .lg .middle } **Understand the design**
+
+    ---
+
+    Read why the jobs are separate, how authentication changes by context, and
+    where the evidence boundary ends.
+
+    [:octicons-arrow-right-24: Read the explanation](explanation/index.md)
 
 </div>
 
-## Is a bundle still the way to go?
+## Current support boundary
 
-**Yes.** Declarative Automation Bundles are the first-party, recommended way to
-package and deploy Databricks projects as code. The important 2025–2026 change is
-that the latest CLI ships a **direct deployment** engine, so a bundle deploy no
-longer shells out to Terraform — exactly what this repo's name asks for. The full
-answer, with sources, is in
-[Why Declarative Automation Bundles](explanation/why-asset-bundles.md).
+| Context | Implemented authentication | Credential state | Free Edition |
+|---|---|---|---:|
+| Local human CLI | Databricks OAuth U2M profile | cached locally; never shared with CI | yes |
+| Local dbt Core | short-lived token from the U2M profile | process environment | yes |
+| GitHub production | workspace OAuth M2M | protected secret, rotated | yes |
+| GitHub OIDC | account-level token federation | no Databricks secret | no |
 
-## Observe the job without another platform
+The personal email address is not the limiting factor. GitHub OIDC requires an
+account-level federation policy, while Free Edition exposes no account console
+or account-level APIs. See [Authentication support](reference/authentication-support.md).
 
-The source job runs one selected `dbt build` and reports that dbt result
-directly. An independent collector job runs every 15 minutes, scans completed
-source runs through the Jobs API, and reconciles each matching staged attempt.
-The source writes `manifest.json` and `run_results.json` with `--target-path`;
-the collector creates a deterministic two-file archive keyed by the full
-attempt identity, publishes sanitized facts, and cleans staging separately.
-Start with
-[Observe dbt jobs](how-to/observe-dbt-jobs.md) for permissions, health queries,
-source/collector verification, and cleanup.
+## Sources and validation
+
+The design is grounded in the repository, a live AWS workspace, and official
+documentation:
+
+- [Databricks Free Edition limitations](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations)
+- [Free trial and Free Edition comparison](https://docs.databricks.com/aws/en/getting-started/free-trial-vs-free-edition)
+- [Databricks OAuth M2M](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m)
+- [Databricks GitHub federation](https://docs.databricks.com/aws/en/dev-tools/auth/provider-github)
+- [Databricks job notifications](https://docs.databricks.com/aws/en/jobs/notifications)
+- [dbt artifacts](https://docs.getdbt.com/reference/artifacts/dbt-artifacts)
+
+The [production verification guide](how-to/verify-production-deployment.md)
+defines the acceptance evidence; the [security explanation](explanation/security-and-secrets.md)
+states what this implementation does not prove.

@@ -4,93 +4,124 @@ icon: lucide/laptop
 
 # Run dbt locally
 
-Iterate on models from your machine — running `dbt` directly against your SQL
-warehouse — before you deploy the bundle. Every value comes from an environment
-variable, so you supply your workspace details at run time.
+Use this guide to build and test the selected NYC taxi graph from your machine
+against a development schema in Databricks.
 
 ## Prerequisites
 
-- Python 3.10+ and the [Databricks CLI](../tutorials/install-the-cli.md).
-- A SQL warehouse and a Unity Catalog catalog you can write to.
-- An authenticated Azure session (`az login`).
+You need:
 
-## 1. Install the adapter
+- Python 3.10–3.13 (3.13 is tested; see [Runtime versions](../reference/runtime-versions.md));
+- the repository checked out locally;
+- an OAuth U2M profile created with `databricks auth login`;
+- a SQL warehouse ID and writable catalog; and
+- a dedicated development schema.
+
+The examples use profile `bricks-demo` and schema `dbt_nyc_taxi_dev`.
+
+## Install the development dependencies
+
+From the repository root, create and activate a virtual environment:
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements-dev.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --requirement requirements-dev.txt
 ```
 
-`requirements-dev.txt` pins the same reviewed runtimes as the deployed job:
-`dbt-core==1.11.11`, `dbt-databricks==1.12.2`, and
-`databricks-sdk==0.117.0`.
-
-## 2. Point dbt at your workspace
-
-The local profile, `dbt_profiles/profiles.yml`, reads everything from
-environment variables, so you set them per shell:
+Verify dbt Core and its adapter:
 
 ```bash
-export DBT_HOST="adb-XXXXXXXXXXXX.NN.azuredatabricks.net"
+dbt --version
+```
+
+The output should list both `dbt-core` and `databricks` without a compatibility
+error.
+
+## Export the connection values
+
+Set the workspace and SQL warehouse values. `DBT_HOST` intentionally omits the
+URL scheme:
+
+```bash
+export DATABRICKS_HOST="https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
+export DBT_HOST="${DATABRICKS_HOST#https://}"
 export DBT_HTTP_PATH="/sql/1.0/warehouses/<your-warehouse-id>"
 export DBT_CATALOG="<your-catalog>"
-export DBT_SCHEMA="dbt_nyc_taxi"   # optional; this is the default
+export DBT_SCHEMA="dbt_nyc_taxi_dev"
 ```
 
-For the token, mint a **short-lived Microsoft Entra ID token** from your `az`
-session instead of creating a PAT:
+Get a short-lived access token from the local U2M profile and expose only the
+token value to dbt:
 
 ```bash
-export DBT_ACCESS_TOKEN="$(az account get-access-token \
-  --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d \
-  --query accessToken -o tsv)"
+export DBT_ACCESS_TOKEN="$(
+  databricks auth token --profile bricks-demo --output json |
+    python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])'
+)"
 ```
 
-!!! note "What is that resource ID?"
-    `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d` is the fixed **Azure Databricks
-    programmatic resource ID** (the same for every Azure tenant). Asking `az` for
-    a token scoped to it yields a token your warehouse accepts. It expires in
-    about an hour — just re-run the command to refresh it.
-
-## 3. Build and test
+Confirm that all five dbt variables are present without printing the token:
 
 ```bash
-dbt --log-format-file json build \
-  --select +nyc_taxi_trips \
+test -n "$DBT_HOST"
+test -n "$DBT_HTTP_PATH"
+test -n "$DBT_CATALOG"
+test -n "$DBT_SCHEMA"
+test -n "$DBT_ACCESS_TOKEN"
+```
+
+All commands should exit silently with status `0`. Re-run the token export when
+you start a new shell or after a long pause; do not create a PAT for this flow.
+
+## Preview the selected graph
+
+List the resources that the build will select:
+
+```bash
+dbt list \
+  --select "+nyc_taxi_trips" \
+  --profiles-dir dbt_profiles \
+  --target dev \
+  --output name
+```
+
+The output should include `nyc_taxi_trips_seed`, `nyc_taxi_trips`, and the two
+`not_null` tests.
+
+## Build and test
+
+Run the selected graph:
+
+```bash
+dbt build \
+  --select "+nyc_taxi_trips" \
   --profiles-dir dbt_profiles \
   --target dev \
   --quiet \
   --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
 ```
 
-!!! check
-    `dbt build` loads the selected seed, builds `nyc_taxi_trips` in
-    `<your-catalog>.dbt_nyc_taxi`, and confirms the attached `not_null`
-    assertions. The single invocation also leaves one coherent
-    `target/run_results.json` for inspection.
+The command should exit with status `0`. [`dbt build`](https://docs.getdbt.com/reference/commands/build)
+loads the seed, materializes the table, and executes the selected tests in DAG
+order.
 
-!!! warning "Local targets vs. the deployed job"
-    Locally you pass `--target dev` because `profiles.yml` defines `dev`/`prod`
-    targets. The **deployed job does not** — Databricks generates its own profile
-    with a single target, so its commands omit `--target`. See
-    [How dbt connects to Databricks](../explanation/how-dbt-connects.md).
+Preview five output rows:
 
-## Prefer interactive setup?
+```bash
+dbt show \
+  --select nyc_taxi_trips \
+  --limit 5 \
+  --profiles-dir dbt_profiles \
+  --target dev
+```
 
-Optional: `dbt init` reads `profile_template.yml` to prompt for the host,
-warehouse HTTP path, catalog, and schema, then writes a profile to
-`~/.dbt/profiles.yml` (outside the repo). It also prompts for a **token**.
-
-!!! warning "Use a short-lived token here too"
-    The `dbt-databricks` adapter's `token` field accepts any bearer token, so
-    paste a **short-lived Microsoft Entra token** — the same value from
-    `az account get-access-token …` in step 2 — rather than creating a long-lived
-    personal access token (PAT). Whatever you enter is written to
-    `~/.dbt/profiles.yml` on your machine, and an Entra token expires on its own
-    in about an hour.
+The preview should contain typed pickup/drop-off timestamps and a derived
+`trip_minutes` column. Your local dbt loop is now working against
+`<your-catalog>.dbt_nyc_taxi_dev`.
 
 ## Related
 
 - [Add a dbt model](add-a-model.md)
-- Reference: [Configuration values](../reference/configuration-values.md)
-- Explanation: [How dbt connects to Databricks](../explanation/how-dbt-connects.md)
+- [Change the deployed dbt selection](change-the-deployed-selection.md)
+- [Configuration values](../reference/configuration-values.md)

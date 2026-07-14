@@ -1086,6 +1086,87 @@ def test_main_persists_discovery_gap_as_not_produced(
     assert values["capture_error_code"] == "STAGED_ARTIFACT_NOT_PRODUCED"
 
 
+def test_main_bounds_discovery_gaps_with_capture_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = replace(_collector_config(), max_task_runs_per_sweep=1)
+    gaps = (
+        _capture_context(job_run_id=31, task_run_id=41),
+        _capture_context(job_run_id=32, task_run_id=42),
+    )
+    _patch_main_runtime(monkeypatch, config)
+    monkeypatch.setattr(
+        collector_notebook,
+        "_completed_capture_contexts",
+        lambda *_args: collector_notebook.CaptureDiscovery(contexts=(), gaps=gaps),
+    )
+    states = iter(
+        [
+            collector_notebook.RegistryCaptureState(
+                terminal_attempts=frozenset(),
+                last_attempted_at={},
+                cleanup_pending=(),
+            ),
+            collector_notebook.RegistryCaptureState(
+                terminal_attempts=frozenset({gaps[0].attempt_key}),
+                last_attempted_at={gaps[0].attempt_key: 100.0},
+                cleanup_pending=(gaps[0],),
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        collector_notebook,
+        "_registry_capture_state",
+        lambda *_args: next(states),
+    )
+    registry_rows: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        collector_notebook,
+        "_upsert_registry",
+        lambda _spark, _context, row: registry_rows.append(row),
+    )
+    monkeypatch.setattr(collector_notebook, "_delete_staging", lambda _context: None)
+    monkeypatch.setattr(
+        collector_notebook,
+        "_record_staging_cleanup",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"incomplete for 2 task run\(s\); .*BATCH_DEFERRED",
+    ):
+        collector_notebook.main()
+
+    assert len(registry_rows) == 1
+
+
+def test_main_preserves_discovery_error_code_in_task_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _collector_config()
+    _patch_main_runtime(monkeypatch, config)
+    monkeypatch.setattr(
+        collector_notebook,
+        "_completed_capture_contexts",
+        lambda *_args: (_ for _ in ()).throw(
+            collector_notebook.ArtifactValidationError("STAGING_LIST_ERROR")
+        ),
+    )
+    monkeypatch.setattr(
+        collector_notebook,
+        "_registry_capture_state",
+        lambda *_args: collector_notebook.RegistryCaptureState(
+            terminal_attempts=frozenset(),
+            last_attempted_at={},
+            cleanup_pending=(),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="error_code=STAGING_LIST_ERROR"):
+        collector_notebook.main()
+
+
 def test_main_batches_unseen_then_oldest_retry_and_reports_deferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
