@@ -1,0 +1,66 @@
+resources:
+  jobs:
+    dbt_observability_collector_job:
+      name: nyc_taxi_dbt_observability_collector
+      description: >-
+        Databricks-native post-run collector that reconciles completed dbt
+        staging leaves into canonical archives and sanitized Unity Catalog
+        observability facts.
+      max_concurrent_runs: 1
+      # Two 14-minute task attempts plus the 60-second retry interval and
+      # one minute of job-level orchestration headroom.
+      timeout_seconds: 1800
+      tags:
+        environment: ${bundle.target}
+        workload: dbt_observability
+        dbt_project: ${bundle.name}
+        criticality: reference
+        observability: databricks_native
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 600
+
+      email_notifications:
+        on_failure: ${var.notification_emails}
+        on_duration_warning_threshold_exceeded: ${var.notification_emails}
+      notification_settings:
+        no_alert_for_skipped_runs: true
+        no_alert_for_canceled_runs: false
+
+      # Read only completed source runs so manifest.json and run_results.json
+      # are no longer being written. Production explicitly unpauses this
+      # schedule; development keeps it paused for manual validation.
+      schedule:
+        quartz_cron_expression: "0 0/15 * * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: collect_completed_dbt_artifacts
+          environment_key: collector
+          notebook_task:
+            notebook_path: ../src/observability/collect_dbt_artifacts.py
+            source: WORKSPACE
+            base_parameters:
+              source_job_id: ${resources.jobs.nyc_taxi_dbt_job.id}
+              source_task_key: dbt_nyc_taxi
+              lookback_days: "59"
+              max_task_runs_per_sweep: "100"
+              observability_catalog: ${var.catalog}
+              observability_schema: ${resources.schemas.dbt_observability.name}
+              observability_volume: ${resources.volumes.dbt_artifacts.name}
+              observability_staging_volume: ${resources.volumes.dbt_artifact_staging.name}
+          timeout_seconds: 840
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+
+      environments:
+        - environment_key: collector
+          spec:
+            environment_version: "4"
+            dependencies:
+              - databricks-sdk==0.117.0

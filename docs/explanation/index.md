@@ -29,8 +29,8 @@ sense.
 
     ---
 
-    The deployed job and local runs connect differently — and why the job's
-    commands omit `--target`.
+    The deployed job, local runs, and in-platform collector use different
+    connection paths — and why the job omits `--target`.
 
 -   :lucide-lock: **[Keeping secrets out of git](security-and-secrets.md)**
 

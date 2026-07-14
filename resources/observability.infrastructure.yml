@@ -1,0 +1,27 @@
+resources:
+  schemas:
+    dbt_observability:
+      name: ${var.observability_schema}_${bundle.target}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Databricks-native dbt observability. Base tables are restricted; grant
+        operators SELECT on sanitized views only.
+
+  volumes:
+    dbt_artifact_staging:
+      name: ${var.observability_staging_volume}
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.dbt_observability.name}
+      volume_type: MANAGED
+      comment: >-
+        Short-lived per-attempt dbt target output. The source identity can read
+        and write staging only; the collector validates and reconciles cleanup.
+
+    dbt_artifacts:
+      name: ${var.observability_volume}
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.dbt_observability.name}
+      volume_type: MANAGED
+      comment: >-
+        Restricted deterministic two-file dbt archives, content-addressed by
+        SHA-256. Application-level tamper-evident evidence, not WORM storage.

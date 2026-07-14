@@ -10,18 +10,23 @@ What every file and directory is for.
 .
 ├── databricks.yml                  # bundle definition + dev/prod targets
 ├── resources/
-│   └── nyc_taxi.job.yml             # serverless job that runs the dbt task
+│   ├── nyc_taxi.job.yml             # source dbt job
+│   ├── dbt_observability_collector.job.yml # scheduled collector job
+│   └── observability.infrastructure.yml # UC schema + staging/evidence Volumes
 ├── dbt_project.yml                 # dbt project (paths under src/)
 ├── dbt_profiles/
 │   └── profiles.yml                # dbt profile for local runs (env-var based)
 ├── profile_template.yml            # prompts for `dbt init` (local profile)
-├── requirements-dev.txt            # dbt-databricks adapter (local dev)
+├── requirements-dev.txt            # exact dbt, SDK, test, lint, and type pins
+├── pyproject.toml                  # pytest, Ruff, and ty configuration
 ├── requirements-docs.txt           # Zensical (builds this docs site)
 ├── zensical.toml                   # documentation site configuration
 ├── src/
 │   ├── seeds/nyc_taxi/             # the seed CSV + its properties
 │   ├── models/nyc_taxi/           # the single table model + tests
+│   ├── observability/              # artifact collector + pure parser helpers
 │   └── analyses/, macros/, snapshots/, tests/   # standard dbt folders (empty)
+├── tests/                          # isolated artifact parser/security tests
 ├── docs/                           # this documentation site (Markdown sources)
 ├── .github/workflows/             # CI (validate), deploy (OIDC), docs (Pages)
 └── .agents/skills/                # installed dbt agent skills
@@ -32,11 +37,17 @@ What every file and directory is for.
 | Path | Role |
 |------|------|
 | `databricks.yml` | Bundle root — see [Bundle configuration](bundle-config.md) |
-| `resources/nyc_taxi.job.yml` | The dbt job — see [The dbt job resource](job-resource.md) |
+| `resources/nyc_taxi.job.yml` | Source dbt job — see [The dbt job resources](job-resource.md) |
+| `resources/dbt_observability_collector.job.yml` | Independent 15-minute collector job |
+| `resources/observability.infrastructure.yml` | Target-scoped observability schema plus staging and evidence managed Volumes |
 | `dbt_project.yml` | dbt paths and seed/model config |
 | `dbt_profiles/profiles.yml` | Local-only dbt connection, fully env-var based |
+| `pyproject.toml` | pytest discovery plus Ruff and ty settings |
 | `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | 100-row seed from `samples.nyctaxi.trips` |
 | `src/models/nyc_taxi/nyc_taxi_trips.sql` | The one table model |
+| `src/observability/collect_dbt_artifacts.py` | Serverless collector notebook |
+| `src/observability/collector_core.py` | Pure archive validation and normalization helpers |
+| `tests/test_collector_core.py` | Offline security, schema, sanitization, and idempotency tests |
 | `.github/workflows/ci.yml` | PR validation (dev) via OIDC |
 | `.github/workflows/deploy.yml` | Deploy + run (prod) via OIDC |
 | `.github/workflows/docs.yml` | Build & publish this site to GitHub Pages |

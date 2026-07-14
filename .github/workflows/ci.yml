@@ -1,10 +1,8 @@
-# CI: validate the bundle and the dbt project on every pull request.
-#
-# Authentication uses GitHub OIDC: the workflow's OIDC token is exchanged for a
-# short-lived Databricks token via an account service principal that has a
-# GitHub Actions federation policy.
-# Setup: docs/how-to/set-up-oidc-cicd.md
-name: CI (validate bundle)
+# CI: validate code and the dbt graph on every pull request without exposing a
+# reusable Databricks credential to pull-request code. Bundle validation is
+# workspace-aware, so it runs against the real workspace in the protected prod
+# deployment workflow after merge.
+name: CI
 
 concurrency: ci-${{ github.ref }}
 
@@ -13,30 +11,46 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write   # required to mint the GitHub OIDC token
   contents: read
 
 env:
-  DATABRICKS_AUTH_TYPE: github-oidc
-  DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-  DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}  # service principal UUID (not a secret)
-  # Workspace-specific values come from GitHub repository Variables. They fill
-  # the bundle variables of the same name.
-  BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-  BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
-  BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
+  DO_NOT_TRACK: "1"
 
 jobs:
   validate:
-    name: Validate bundle (dev)
+    name: Validate code and dbt graph
     runs-on: ubuntu-latest
-    environment: dev
     steps:
       - uses: actions/checkout@v4
 
-      - uses: databricks/setup-cli@v1.5.0
+      - uses: actions/setup-python@v5
         with:
-          version: 1.5.0
+          python-version: "3.13"
 
-      - name: databricks bundle validate
-        run: databricks bundle validate --target dev
+      - name: Install development dependencies
+        run: python -m pip install --requirement requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Type check
+        run: ty check
+
+      - name: Unit tests
+        run: pytest
+
+      # Parse and enumerate the dbt graph without contacting Databricks. The
+      # local profile requires connection-shaped values even for offline work.
+      - name: Validate dbt project offline
+        env:
+          DBT_HOST: adb-ci.invalid
+          DBT_HTTP_PATH: /sql/1.0/warehouses/0000000000000000
+          DBT_CATALOG: ci_catalog
+          DBT_SCHEMA: ci_schema
+          DBT_ACCESS_TOKEN: ci-placeholder
+        run: |
+          dbt parse --no-partial-parse --profiles-dir dbt_profiles --target dev
+          dbt list --profiles-dir dbt_profiles --target dev --output name

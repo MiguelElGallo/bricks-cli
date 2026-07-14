@@ -54,7 +54,7 @@ databricks version
 You should see something like:
 
 ```console
-Databricks CLI v1.5.0
+Databricks CLI v1.7.0
 ```
 
 !!! check "That's it"

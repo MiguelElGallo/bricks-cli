@@ -49,16 +49,47 @@ flowchart LR
     Add **required reviewers** to the `prod` GitHub Environment so a human must
     approve before the production deploy proceeds.
 
-## Inspect and clean up
+## Inspect the deployment
+
+Production requires three distinct service-principal Application IDs:
+
+- `BUNDLE_VAR_prod_deployer_service_principal_name` for deployment and bundle
+  management;
+- `BUNDLE_VAR_prod_run_as_service_principal_name` for the source dbt job; and
+- `BUNDLE_VAR_prod_collector_service_principal_name` for the collector job.
+
+None has a production default, so a deployment cannot silently inherit a human
+identity. The supplied workflow maps the deployer from `DATABRICKS_CLIENT_ID`
+and the two runtime identities from dedicated GitHub Variables.
+
+The dbt runner gets the SQL warehouse and target dbt catalog/schema access it
+needs plus read/write access only to the staging Volume. The bundle gives the
+collector `CAN_VIEW` on the source job, read/write access to staging for
+reconciliation, and read/write access to the evidence Volume. An administrator
+must still grant parent-catalog usage and the optional `system.lakeflow` read
+privileges described in the [observability runbook](observe-dbt-jobs.md). This
+separation lets dbt use its own short-lived target directory without allowing
+the observed workload to access or rewrite durable evidence.
+
+Keep the collector identity stable because it owns the runtime-created Delta
+tables and views. Rotate it only with an approved Unity Catalog
+ownership-transfer plan.
 
 ```bash
 databricks bundle summary -t prod -p bricks-demo   # what's deployed?
-databricks bundle destroy -t prod -p bricks-demo   # tear it down
 ```
+
+!!! danger "Production observability evidence is protected"
+    The production observability schema and both managed Volumes declare
+    `lifecycle.prevent_destroy: true`. An ordinary `bundle destroy -t prod`
+    must not remove them. Retiring production evidence requires a separate,
+    reviewed retention/export and decommissioning procedure; do not use the dev
+    cleanup commands for production.
 
 ## Related
 
 - [Set up secretless CI/CD with OIDC](set-up-oidc-cicd.md)
+- Operations: [Observe dbt jobs](observe-dbt-jobs.md)
 - Reference: [Bundle configuration](../reference/bundle-config.md) ·
   [CLI commands](../reference/cli-commands.md)
 - Explanation: [Why Declarative Automation Bundles](../explanation/why-asset-bundles.md)

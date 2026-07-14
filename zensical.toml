@@ -8,7 +8,7 @@
 [project]
 
 site_name = "bricks-cli"
-site_description = "Deploy a dbt project to Databricks with the latest Databricks CLI and Declarative Automation Bundles."
+site_description = "Deploy and observe a dbt Core project on Azure Databricks with Declarative Automation Bundles."
 site_author = "bricks-cli contributors"
 
 # GitHub Pages project URL. Asset links are relative, so the project subpath
@@ -38,6 +38,7 @@ nav = [
       { "How-to guides" = "how-to/index.md" },
       { "Run dbt locally" = "how-to/run-dbt-locally.md" },
       { "Add a dbt model" = "how-to/add-a-model.md" },
+      { "Observe dbt jobs" = "how-to/observe-dbt-jobs.md" },
       { "Set up secretless CI/CD with OIDC" = "how-to/set-up-oidc-cicd.md" },
       { "Deploy to production" = "how-to/deploy-to-production.md" },
   ]},
@@ -45,7 +46,7 @@ nav = [
       { "Reference" = "reference/index.md" },
       { "CLI commands" = "reference/cli-commands.md" },
       { "Bundle configuration" = "reference/bundle-config.md" },
-      { "The dbt job resource" = "reference/job-resource.md" },
+      { "The dbt job resources" = "reference/job-resource.md" },
       { "Configuration values" = "reference/configuration-values.md" },
       { "Project layout" = "reference/project-layout.md" },
   ]},

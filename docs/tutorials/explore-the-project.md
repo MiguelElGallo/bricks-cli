@@ -135,7 +135,7 @@ Two lines deserve a closer look:
 ## Step 3 — The tests
 
 `schema.yml` documents the model's columns and adds two `not_null` tests that
-`dbt test` checks after the build:
+`dbt build` runs after materializing the model:
 
 ```yaml title="src/models/nyc_taxi/schema.yml"
 models:
@@ -150,8 +150,9 @@ models:
 ```
 
 !!! check "Tests are part of the pipeline"
-    The deployed job runs `dbt test` right after `dbt run`, so a broken
-    assumption fails the job instead of quietly shipping bad data.
+    The deployed job runs one `dbt build`, so model execution and attached tests
+    share one invocation and one `run_results.json`. A broken assumption fails
+    the job instead of quietly shipping bad data.
 
 ## The pipeline in one line
 
@@ -159,9 +160,11 @@ That's the entire data flow:
 
 ```mermaid
 flowchart LR
-    csv["nyc_taxi_trips_seed.csv"] -->|dbt seed| seedtbl["seed table"]
-    seedtbl -->|"dbt run (ref)"| tbl["nyc_taxi_trips<br/>Delta table"]
-    tbl -->|dbt test| ok["not_null ✓"]
+    build["one dbt build"] --> csv["nyc_taxi_trips_seed.csv"]
+    csv --> seedtbl["seed table"]
+    seedtbl -->|ref| tbl["nyc_taxi_trips<br/>Delta table"]
+    tbl --> ok["not_null ✓"]
+    ok --> artifacts["one dbt artifact set"]
 ```
 
 ## Recap

@@ -2,6 +2,33 @@ resources:
   jobs:
     nyc_taxi_dbt_job:
       name: nyc_taxi_dbt_job
+      description: >-
+        Serverless dbt Core build monitored with native Lakeflow controls. dbt
+        writes per-attempt JSON artifacts to governed staging; a separate job
+        captures them after this run terminates.
+      max_concurrent_runs: 1
+      # Two 45-minute task attempts plus the 60-second retry interval and
+      # one minute of job-level orchestration headroom.
+      timeout_seconds: 5520
+      tags:
+        environment: ${bundle.target}
+        workload: dbt
+        dbt_project: ${bundle.name}
+        criticality: reference
+        observability: databricks_native
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: ${var.job_duration_warning_seconds}
+
+      email_notifications:
+        on_failure: ${var.notification_emails}
+        on_duration_warning_threshold_exceeded: ${var.notification_emails}
+      notification_settings:
+        no_alert_for_skipped_runs: true
+        no_alert_for_canceled_runs: false
 
       # Run daily, one day after the previous run. In the 'dev' target this
       # trigger is paused automatically (development mode).
@@ -23,14 +50,27 @@ resources:
             warehouse_id: ${var.warehouse_id}
             catalog: ${var.catalog}
             schema: ${var.schema}
-            # Load the seed, build the table, then test it. No --target flag:
+            # Build the selected DAG (seed, model, and tests) in one invocation.
+            # --target-path writes artifacts to a full AttemptKey staging leaf
+            # for post-run collection. No connection-profile --target:
             # Databricks generates the dbt profile/target from the warehouse,
             # catalog and schema above, so the bundle target (dev/prod) — not a
             # dbt target — selects the environment.
             commands:
-              - 'dbt seed'
-              - 'dbt run'
-              - 'dbt test'
+              - >-
+                dbt --log-format-file json
+                build
+                --target-path /Volumes/${var.catalog}/${resources.schemas.dbt_observability.name}/${resources.volumes.dbt_artifact_staging.name}/workspace_id={{workspace.id}}/job_id={{job.id}}/job_run_id={{job.run_id}}/repair_count={{job.repair_count}}/task_run_id={{task.run_id}}/execution_count={{task.execution_count}}/target
+                --select +nyc_taxi_trips
+                --quiet --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
+          timeout_seconds: 2700
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
+          email_notifications:
+            on_failure: ${var.notification_emails}
+          notification_settings:
+            alert_on_last_attempt: true
 
       # Serverless environment that runs the dbt CLI.
       environments:
@@ -38,4 +78,5 @@ resources:
           spec:
             environment_version: "4"
             dependencies:
-              - dbt-databricks>=1.8.0,<2.0.0
+              - dbt-core==1.11.11
+              - dbt-databricks==1.12.2

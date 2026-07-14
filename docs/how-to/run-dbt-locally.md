@@ -21,8 +21,9 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-`requirements-dev.txt` pins the official **`dbt-databricks`** adapter
-(`dbt-databricks>=1.8.0,<2.0.0`) — the same range the deployed job installs.
+`requirements-dev.txt` pins the same reviewed runtimes as the deployed job:
+`dbt-core==1.11.11`, `dbt-databricks==1.12.2`, and
+`databricks-sdk==0.117.0`.
 
 ## 2. Point dbt at your workspace
 
@@ -54,15 +55,19 @@ export DBT_ACCESS_TOKEN="$(az account get-access-token \
 ## 3. Build and test
 
 ```bash
-dbt seed --profiles-dir dbt_profiles --target dev
-dbt run  --profiles-dir dbt_profiles --target dev
-dbt test --profiles-dir dbt_profiles --target dev
+dbt --log-format-file json build \
+  --select +nyc_taxi_trips \
+  --profiles-dir dbt_profiles \
+  --target dev \
+  --quiet \
+  --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
 ```
 
 !!! check
-    `dbt run` builds `nyc_taxi_trips` in `<your-catalog>.dbt_nyc_taxi`, and
-    `dbt test` confirms the `not_null` assertions. You're iterating against the
-    real warehouse without deploying the bundle.
+    `dbt build` loads the selected seed, builds `nyc_taxi_trips` in
+    `<your-catalog>.dbt_nyc_taxi`, and confirms the attached `not_null`
+    assertions. The single invocation also leaves one coherent
+    `target/run_results.json` for inspection.
 
 !!! warning "Local targets vs. the deployed job"
     Locally you pass `--target dev` because `profiles.yml` defines `dev`/`prod`

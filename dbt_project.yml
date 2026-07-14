@@ -2,6 +2,11 @@ name: 'bricks_cli_dbt'
 version: '1.0.0'
 config-version: 2
 
+# This project runs in a regulated environment: dbt must not send anonymous
+# usage events outside Databricks.
+flags:
+  send_anonymous_usage_stats: false
+
 # This setting configures which "profile" dbt uses for this project.
 profile: 'bricks_cli_dbt'
 

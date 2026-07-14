@@ -59,11 +59,20 @@ the same whether you add a model, a seed, or a test.
     dbt seed --select your_new_seed --profiles-dir dbt_profiles --target dev
     ```
 
-## It deploys automatically
+## Add it to the deployed selection
 
-You don't touch the bundle to add models. The job runs `dbt seed` / `dbt run` /
-`dbt test` across the **whole project**, so once your files are committed and the
-bundle is redeployed, the new resources build with everything else:
+The job deliberately runs `dbt build --select +nyc_taxi_trips`; it does not
+build the whole project. A model upstream of `nyc_taxi_trips` is selected by the
+leading `+`, but a new downstream model such as `long_trips` is not. Preview the
+selection first:
+
+```bash
+dbt list --select +nyc_taxi_trips long_trips \
+  --profiles-dir dbt_profiles --target dev
+```
+
+Then extend the `--select` expression in `resources/nyc_taxi.job.yml` (or replace
+it with an intentional tag/path selector), validate the bundle, and redeploy:
 
 ```bash
 databricks bundle deploy -t dev -p bricks-demo
@@ -73,4 +82,4 @@ databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo
 ## Related
 
 - [Run dbt locally](run-dbt-locally.md)
-- Reference: [The dbt job resource](../reference/job-resource.md)
+- Reference: [The dbt job resources](../reference/job-resource.md)
