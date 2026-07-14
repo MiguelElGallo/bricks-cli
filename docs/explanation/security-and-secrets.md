@@ -24,11 +24,13 @@ work, so you can keep it that way as you extend the project.
 
 ### 1. Bundle variables instead of literals
 
-`databricks.yml` declares `warehouse_id`, `catalog`, and `schema` as **bundle
+`databricks.yml` declares workspace and observability settings as **bundle
 variables**. The two sensitive ones — `warehouse_id` and `catalog` — default to
 obvious placeholders (`REPLACE_WITH_YOUR_*`); `schema` carries the non-sensitive
-default `dbt_nyc_taxi`. The job resource references `${var.warehouse_id}` etc., so
-the real values are supplied at deploy time as `BUNDLE_VAR_*`. See
+default `dbt_nyc_taxi`. Observability schema, Volumes, duration threshold, and
+notification settings have non-sensitive defaults. The job resources reference
+`${var.warehouse_id}` etc., so real values are supplied at deploy time as
+`BUNDLE_VAR_*` or an ignored target override file. See
 [Bundle configuration](../reference/bundle-config.md).
 
 ### 2. No host in the bundle
@@ -64,6 +66,47 @@ ignored so it can never be committed:
 .env.local  *.local.yml  *.local.yaml
 /site/  docs/_build/    # built docs output
 ```
+
+### 6. Raw evidence stays governed
+
+The source writes `manifest.json` and `run_results.json` into a short-lived
+staging Volume through dbt's `--target-path`. The collector reads exactly those
+two completed files and creates a deterministic canonical tar in a separate
+evidence Volume. Both JSON artifacts can contain identifiers and operational
+metadata, so both Volumes remain restricted. The collector normalizes only an
+allowlist of run keys, versions, statuses, counts, durations, node identifiers,
+failures, and rows affected.
+
+Routine operators consume five sanitized views. They should not receive direct
+`READ VOLUME` on either Volume or base-table access. Invalid artifact pairs go
+to a separate `quarantine/` path and are represented by an allowlisted error
+code rather than their raw message.
+
+Production separates three service principals: the OIDC deployer, the source
+dbt runner, and the collector. The source runner receives `READ VOLUME` and
+`WRITE VOLUME` only on staging so dbt can use its target directory during the
+invocation. The collector receives `CAN_VIEW` on the source job, read/write on
+staging for reconciliation, and read/write on the evidence Volume. The dbt
+runner therefore cannot access or rewrite its own durable evidence.
+Parent-catalog, SQL warehouse, target-dbt-schema, and `system.lakeflow` access
+remain administrator-controlled prerequisites. Because catalog/schema
+privileges inherit, the deployment runbook requires `SHOW GRANTS` checks for
+the schema, both Volumes, base tables, and curated views.
+
+The evidence path is content-addressed and verified by SHA-256, which makes
+unexpected change detectable at the application layer. A managed Volume is not
+WORM storage; write-once retention requires a separate approved control.
+
+### 7. No external telemetry
+
+`dbt_project.yml` sets `send_anonymous_usage_stats: false`. Job history comes
+from native Lakeflow system tables, artifacts remain in Unity Catalog, and
+failure/duration alerts use native Lakeflow email only when an approved internal
+distribution list is configured. No webhook, OpenLineage collector, or external
+telemetry SaaS is part of this repository.
+
+See [Observe dbt jobs](../how-to/observe-dbt-jobs.md) for the access boundary and
+verification queries.
 
 !!! tip "Placeholders are intentional"
     Strings like `adb-XXXXXXXXXXXX.NN.azuredatabricks.net`,

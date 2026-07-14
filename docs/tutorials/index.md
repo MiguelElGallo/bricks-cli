@@ -15,8 +15,9 @@ By the end you will have:
 - the latest **Databricks CLI** installed and talking to a workspace,
 - a tiny dbt project (**one seed → one table**) deployed as a
   **Declarative Automation Bundle**, and
-- a serverless job that runs `dbt seed`, `dbt run`, and `dbt test` for you —
-  finishing with a real Delta table you can query.
+- a source job that stages dbt JSON artifacts with `--target-path`, plus an
+  independent 15-minute collector that captures and reconciles completed task
+  attempts in Unity Catalog.
 
 No Terraform required.
 

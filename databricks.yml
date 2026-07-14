@@ -1,8 +1,9 @@
 # databricks.yml — the root of this Declarative Automation Bundle (DAB).
 #
 # A bundle is the deployable unit for Databricks: it packages this dbt project
-# plus the job that runs it, and deploys them with the Databricks CLI. The latest
-# CLI uses a direct deployment engine, so no Terraform is required.
+# plus the jobs and governed storage that run it, and deploys them with the
+# Databricks CLI. The latest CLI uses a direct deployment engine, so no
+# Terraform is required.
 # Docs: https://docs.databricks.com/dev-tools/bundles/
 bundle:
   name: bricks_cli_dbt
@@ -27,6 +28,44 @@ variables:
   schema:
     description: Schema dbt builds objects in.
     default: dbt_nyc_taxi
+  observability_schema:
+    description: >-
+      Base schema name for sanitized observability tables and the restricted
+      artifact Volume. The bundle target suffix is added automatically.
+    default: dbt_observability
+  observability_volume:
+    description: >-
+      Collector-only managed Unity Catalog Volume for deterministic,
+      content-addressed dbt evidence archives.
+    default: dbt_artifacts
+  observability_staging_volume:
+    description: >-
+      Managed Unity Catalog Volume for short-lived per-attempt dbt target output
+      before the collector validates, archives, and reconciles cleanup.
+    default: dbt_artifacts_staging
+  job_duration_warning_seconds:
+    description: Native Lakeflow duration-warning threshold.
+    default: 900
+  notification_emails:
+    description: >-
+      Approved internal notification recipients. Keep empty when outbound email
+      is prohibited; never commit a personal address.
+    type: complex
+    default: []
+  prod_run_as_service_principal_name:
+    description: >-
+      Application ID of the dedicated production dbt source-job service
+      principal. This has no default so production cannot inherit the deployer's
+      identity.
+  prod_collector_service_principal_name:
+    description: >-
+      Application ID of the dedicated production observability collector
+      service principal. Keep it distinct from the dbt run identity so the
+      workload cannot rewrite its own operational evidence.
+  prod_deployer_service_principal_name:
+    description: >-
+      Application ID of the production deployment service principal. This has
+      no default so the production job ACL never classifies CI as a user.
 
 # Targets control the deployment *mode* and settings (resource naming, root path,
 # permissions) — not the workspace host, which comes from DATABRICKS_HOST or your
@@ -36,12 +75,18 @@ variables:
 targets:
   dev:
     # 'development' mode prefixes resources with '[dev <user>]' and pauses
-    # schedules, so the dev *job* is isolated from prod. Note: the dbt task still
+    # schedules, so the dev jobs are isolated from prod. Note: the dbt task still
     # writes to the catalog/schema you supply, so use separate values (or
     # per-target BUNDLE_VAR_* overrides) to isolate dev and prod *data*.
     # https://docs.databricks.com/dev-tools/bundles/deployment-modes.html
     mode: development
     default: true
+    variables:
+      # Declared only so the globally defined variable is not required for dev;
+      # the dev target has no service-principal run_as override.
+      prod_run_as_service_principal_name: unused-in-dev
+      prod_collector_service_principal_name: unused-in-dev
+      prod_deployer_service_principal_name: unused-in-dev
     # Host comes from DATABRICKS_HOST or your CLI profile.
 
   prod:
@@ -51,5 +96,64 @@ targets:
       # from the current user rather than a hard-coded name.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     permissions:
-      - user_name: ${workspace.current_user.userName}
+      - service_principal_name: ${var.prod_deployer_service_principal_name}
         level: CAN_MANAGE
+    # Production staging and evidence must not disappear during a normal bundle
+    # destroy. Dev objects remain cleanly disposable.
+    resources:
+      jobs:
+        nyc_taxi_dbt_job:
+          # Run dbt as a dedicated identity with staging-scoped read/write for
+          # short-lived target output and no ability to modify evidence.
+          run_as:
+            service_principal_name: ${var.prod_run_as_service_principal_name}
+          permissions:
+            # The collector needs read-only job access to enumerate completed
+            # runs and reconcile them with governed staging leaves.
+            - service_principal_name: ${var.prod_collector_service_principal_name}
+              level: CAN_VIEW
+        dbt_observability_collector_job:
+          # Keep capture and staging reconciliation under an identity distinct
+          # from both the observed dbt workload and deployment principal.
+          run_as:
+            service_principal_name: ${var.prod_collector_service_principal_name}
+          schedule:
+            pause_status: UNPAUSED
+      schemas:
+        dbt_observability:
+          grants:
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges:
+                - USE_SCHEMA
+                - CREATE_TABLE
+                # The schema is dedicated to this workload. These inherited
+                # rights keep MERGE/read access explicit if table ownership is
+                # transferred during a controlled service-principal rotation.
+                - SELECT
+                - MODIFY
+            - principal: ${var.prod_run_as_service_principal_name}
+              privileges:
+                - USE_SCHEMA
+          lifecycle:
+            prevent_destroy: true
+      volumes:
+        dbt_artifacts:
+          grants:
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges:
+                - READ_VOLUME
+                - WRITE_VOLUME
+          lifecycle:
+            prevent_destroy: true
+        dbt_artifact_staging:
+          grants:
+            - principal: ${var.prod_run_as_service_principal_name}
+              privileges:
+                - READ_VOLUME
+                - WRITE_VOLUME
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges:
+                - READ_VOLUME
+                - WRITE_VOLUME
+          lifecycle:
+            prevent_destroy: true

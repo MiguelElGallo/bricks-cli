@@ -23,11 +23,12 @@ The facts, organized for lookup. These pages describe exactly what's in the repo
     Every field in `databricks.yml`: `bundle`, `include`, `variables`, and the
     `dev` / `prod` targets.
 
--   :lucide-briefcase: **[The dbt job resource](job-resource.md)**
+-   :lucide-briefcase: **[The dbt job resources](job-resource.md)**
 
     ---
 
-    The serverless dbt job in `resources/nyc_taxi.job.yml`, field by field.
+    The independent dbt source and collector jobs, native health controls,
+    tables, and views.
 
 -   :lucide-sliders-horizontal: **[Configuration values](configuration-values.md)**
 

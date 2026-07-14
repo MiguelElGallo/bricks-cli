@@ -66,7 +66,7 @@ When `warehouse_id` / `catalog` / `schema` are set on the `dbt_task`, Databricks
 generates a profile whose name matches `dbt_project.yml`'s `profile:`
 (`bricks_cli_dbt`) but with a **single target** (named `databricks_cluster`). So:
 
-- The job runs **bare** `dbt seed` / `dbt run` / `dbt test`.
+- The job runs one selected `dbt build` invocation with no dbt `--target`.
 - Passing `--target dev` would fail with *"profile does not have a target named
   'dev'"* — that target only exists in your **local** `profiles.yml`.
 
@@ -84,13 +84,31 @@ its `profiles.yml`: Databricks injects `DBT_HOST` / `DBT_ACCESS_TOKEN` but not
 ## The adapter and materializations
 
 `requirements-dev.txt` pins the adapter for local dev, and the deployed job
-installs the same range into its serverless environment:
+installs the same exact versions into its serverless environments:
 
 ```text
-dbt-databricks>=1.8.0,<2.0.0
+dbt-core==1.11.11
+dbt-databricks==1.12.2
+databricks-sdk==0.117.0
 ```
 
 `dbt-databricks` supports materializations including `view`, `table`,
 `incremental`, `materialized_view`, `streaming_table`, and `ephemeral`. This demo
 uses a plain `table` — see [Add a dbt model](../how-to/add-a-model.md) to try the
 others.
+
+## Artifact staging stays inside Databricks
+
+The deployed dbt command adds `--target-path` pointing to a per-attempt leaf in
+a managed Unity Catalog staging Volume. This controls only where dbt writes
+`manifest.json`, `run_results.json`, and other target output; it is unrelated to
+the connection selector `--target` discussed above.
+
+After a source run finishes, the separately scheduled collector uses its own
+runtime identity to list completed runs, reconcile their staging leaves, and
+read exactly the completed manifest and run-results files through governed
+POSIX-style `/Volumes/...` paths. It writes a deterministic two-file archive to
+a separate evidence Volume and normalizes only allowlisted facts into Delta
+tables and curated views. It does not use the local dbt profile, a PAT, an
+external telemetry endpoint, or a cloud-specific storage API. Operational
+details are in [Observe dbt jobs](../how-to/observe-dbt-jobs.md).

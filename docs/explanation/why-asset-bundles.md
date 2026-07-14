@@ -62,17 +62,20 @@ under the deploying principal's home directory (the service principal's in CI) a
 applies the permissions you declare.
 
 This is why the [tutorial](../tutorials/deploy-and-run.md) deploys to `dev` first:
-you can experiment with the *job* without disturbing the prod deployment. Dev mode
-isolates the job resource, not the data — the dbt task writes to whatever
+you can experiment with the *jobs* without disturbing the prod deployment. Dev mode
+isolates the job resources, not the data — the dbt task writes to whatever
 catalog/schema you supply, so use separate schemas to keep dev and prod tables
 apart.
 
 ## How it maps to this repo
 
-`databricks.yml` is the root; the one resource (`resources/nyc_taxi.job.yml`) is a
-serverless job that runs dbt. The field-by-field details are in
+`databricks.yml` is the root. `resources/nyc_taxi.job.yml` defines the serverless
+dbt source job, `resources/dbt_observability_collector.job.yml` defines the
+independent scheduled collector, and
+`resources/observability.infrastructure.yml` defines the governed schema plus
+staging and evidence managed Volumes. The field-by-field details are in
 [Bundle configuration](../reference/bundle-config.md) and
-[The dbt job resource](../reference/job-resource.md).
+[The dbt job resources](../reference/job-resource.md).
 
 ## Sources
 

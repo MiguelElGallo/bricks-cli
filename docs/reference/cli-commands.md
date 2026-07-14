@@ -5,7 +5,7 @@ icon: lucide/terminal
 # CLI commands
 
 Source of truth: [github.com/databricks/cli](https://github.com/databricks/cli).
-Examples assume **Databricks CLI v1.5.0**.
+Examples assume **Databricks CLI v1.7.0**.
 
 ## Command groups used here
 
@@ -17,6 +17,8 @@ Examples assume **Databricks CLI v1.5.0**.
 | `current-user` | `databricks current-user me` | Confirm who you're authenticated as |
 | `warehouses` | `databricks warehouses list` | Find the SQL warehouse ID for dbt |
 | `catalogs` | `databricks catalogs list` | Pick the Unity Catalog target |
+| `jobs` | `databricks jobs list-runs --job-id <id>` | Inspect completed source runs used for reconciliation |
+| `fs` | `databricks fs ls dbfs:/Volumes/...` | Inspect an approved managed Volume path |
 | `api` | `databricks api post /api/2.0/sql/statements` | Ad-hoc REST calls (e.g. query a table) |
 
 ## `databricks bundle` subcommands
@@ -39,7 +41,7 @@ A typical local cycle (the `-p bricks-demo` profile carries your host and
 
 ```bash
 databricks bundle validate -t dev -p bricks-demo   # resolve + type-check
-databricks bundle plan     -t dev -p bricks-demo   # preview changes (optional)
+databricks bundle plan     -t dev -p bricks-demo   # preview changes + resolve resource references
 databricks bundle deploy   -t dev -p bricks-demo   # upload files + create/update resources
 databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo   # run the job now
 databricks bundle summary  -t dev -p bricks-demo   # what's deployed?
@@ -50,16 +52,18 @@ databricks bundle destroy  -t dev -p bricks-demo   # tear it down
 
 | Command | Purpose |
 |---------|---------|
-| `dbt seed` | Load the seed CSV into the warehouse |
-| `dbt run` | Build the model(s) — here, the `nyc_taxi_trips` table |
-| `dbt test` | Run data tests (e.g. `not_null`) after the build |
-| `dbt build` | `seed` + `run` + `test` in dependency order |
+| `dbt seed` | Load selected seed CSV files during local, focused development |
+| `dbt run` | Build selected models during local, focused development |
+| `dbt test` | Run selected data tests during local, focused development |
+| `dbt build` | Run selected seeds, models, and tests in DAG order; the deployed job uses this |
 | `dbt init` | Create a local profile from `profile_template.yml` |
 
-!!! note "`--target` locally, but not in the job"
+!!! note "`--target` is different from `--target-path`"
     Local runs use `--profiles-dir dbt_profiles --target dev`. The **deployed
-    job omits `--target`** because Databricks generates the profile from the dbt
-    task's `warehouse_id` / `catalog` / `schema`. See
+    job omits connection selector `--target`** because Databricks generates the
+    profile from the dbt task's `warehouse_id` / `catalog` / `schema`. It does
+    use `--target-path /Volumes/...` to stage JSON artifacts for the collector;
+    that flag changes artifact location, not the connection. See
     [How dbt connects to Databricks](../explanation/how-dbt-connects.md).
 
 ## Global flags worth knowing
@@ -76,9 +80,9 @@ databricks bundle destroy  -t dev -p bricks-demo   # tear it down
 Use the first-party action, pinned for reproducibility:
 
 ```yaml
-- uses: databricks/setup-cli@v1.5.0
+- uses: databricks/setup-cli@v1.7.0
   with:
-    version: 1.5.0
+    version: 1.7.0
 ```
 
 !!! info "Stability"
@@ -86,3 +90,7 @@ Use the first-party action, pinned for reproducibility:
     a major version. Features marked *Beta* / *Private Preview* or under
     `databricks experimental` may change in a minor release — pinning an exact
     version keeps deployments reproducible.
+
+The serverless job also pins its Python dependencies exactly:
+`dbt-core==1.11.11`, `dbt-databricks==1.12.2`, and
+`databricks-sdk==0.117.0`.

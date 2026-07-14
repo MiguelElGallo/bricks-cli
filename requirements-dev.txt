@@ -1,5 +1,11 @@
-## requirements-dev.txt: dependencies for local dbt development.
-## The deployed job installs the same adapter into its serverless environment
-## (see resources/nyc_taxi.job.yml).
+## requirements-dev.txt: exact, reviewed dependencies for local dbt and
+## observability development. The deployed serverless environments use the
+## same runtime pins (see resources/nyc_taxi.job.yml).
 
-dbt-databricks>=1.8.0,<2.0.0
+dbt-core==1.11.11
+dbt-databricks==1.12.2
+# 0.117.0 is the newest SDK accepted by dbt-databricks 1.12.2 (<0.118.0).
+databricks-sdk==0.117.0
+pytest==9.1.1
+ruff==0.15.21
+ty==0.0.58

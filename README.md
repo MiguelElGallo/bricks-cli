@@ -9,6 +9,14 @@ centre: **one seed → one table.** A 100‑row extract of the public
 `samples.nyctaxi.trips` table is committed as a dbt seed and materialized into a
 Delta table by a single dbt model.
 
+The project also demonstrates a **Databricks-only observability path** suitable
+for regulated environments: dbt stages `manifest.json` and `run_results.json`
+in a restricted Unity Catalog Volume, an independent collector creates a
+deterministic content-addressed archive, and operators use sanitized Delta views
+joined to Lakeflow system tables. No external telemetry platform or
+cloud-specific monitoring service is required, and dbt anonymous usage
+reporting is disabled.
+
 📖 **Documentation site:** <https://miguelelgallo.github.io/bricks-cli/> —
 structured with [Diátaxis](https://diataxis.fr/) (Tutorial · How‑to · Reference ·
 Explanation) and built with [Zensical](https://zensical.org/). The Markdown
@@ -19,15 +27,21 @@ flowchart LR
     subgraph repo["This repo (a Declarative Automation Bundle)"]
         seed["seed CSV<br/>nyc_taxi_trips_seed"]
         model["model (table)<br/>nyc_taxi_trips"]
-        job["resources/*.job.yml<br/>serverless dbt job"]
+        job["source dbt job"]
         seed --> model
     end
-    cli["Databricks CLI v1.5.0<br/>bundle validate / deploy / run"]
+    cli["Databricks CLI v1.7.0<br/>bundle validate / deploy / run"]
     repo -->|databricks bundle deploy| cli
-    cli --> ws["Azure Databricks workspace"]
+    cli --> ws["Databricks workspace"]
     ws --> wh["Serverless SQL warehouse"]
-    job -->|dbt seed/run/test| wh
+    job -->|"one dbt build"| wh
     wh --> tbl["&lt;catalog&gt;.dbt_nyc_taxi.nyc_taxi_trips"]
+    job -->|"--target-path"| staging["staging Volume<br/>two dbt JSON artifacts"]
+    schedule["every 15 minutes"] --> collector["independent collector job"]
+    collector -->|"Jobs API: completed runs"| job
+    staging --> collector
+    collector --> evidence["canonical archive + sanitized Delta health views"]
+    system["system.lakeflow"] --> evidence
 ```
 
 ## Is a bundle still the way to go? (the research question)
@@ -39,23 +53,51 @@ longer shells out to Terraform — exactly what this repo's name asks for. Detai
 and sources are in
 [Why Declarative Automation Bundles](docs/explanation/why-asset-bundles.md).
 
+## How observability works
+
+The source job runs `dbt build --select +nyc_taxi_trips` and uses
+`--target-path` to write `manifest.json` and `run_results.json` into a staging
+leaf keyed by workspace, job, run, repair, task run, and execution. It contains
+no collector task, so its result reflects dbt directly.
+
+A second job runs every 15 minutes, lists completed source runs, and reconciles
+matching staging leaves. It packages exactly those two JSON files into a
+deterministic tar, stores the tar under its SHA-256 in a collector-only evidence
+Volume, writes allowlisted invocation/node facts, and then deletes staging.
+Capture and cleanup failures belong to the collector alert; they never change
+the already-terminal source result.
+
+The managed Volume controls are application-level tamper-evident, not WORM.
+The collector uses governed sequential `/Volumes/...` I/O and has no external
+or Azure-native telemetry/storage dependency.
+
+The top-level serverless dependencies are pinned: `dbt-core==1.11.11`,
+`dbt-databricks==1.12.2`, and `databricks-sdk==0.117.0`. These direct pins are
+not a complete transitive lockfile guarantee. Follow the
+[observability runbook](docs/how-to/observe-dbt-jobs.md) for permissions,
+configuration, queries, forced-failure verification, and safe cleanup.
+
 ## Repository layout
 
 ```
 .
 ├── databricks.yml                  # bundle definition + dev/prod targets
 ├── resources/
-│   └── nyc_taxi.job.yml             # serverless job that runs the dbt task
+│   ├── nyc_taxi.job.yml             # source dbt job
+│   ├── dbt_observability_collector.job.yml # scheduled collector job
+│   └── observability.infrastructure.yml # UC schema + staging/evidence Volumes
 ├── dbt_project.yml                 # dbt project (paths under src/)
 ├── dbt_profiles/
 │   └── profiles.yml                # dbt profile for local runs (env‑var based)
 ├── profile_template.yml            # prompts for `dbt init` (local profile)
-├── requirements-dev.txt            # dbt-databricks adapter (local dev)
+├── requirements-dev.txt            # exact dbt, SDK, test, lint, and type pins
 ├── requirements-docs.txt           # Zensical (builds the docs site)
 ├── zensical.toml                   # documentation site configuration
 ├── src/
 │   ├── seeds/nyc_taxi/             # the seed CSV + its properties
-│   └── models/nyc_taxi/           # the single table model + tests
+│   ├── models/nyc_taxi/            # the single table model + tests
+│   └── observability/              # artifact validation + normalization
+├── tests/                          # isolated collector security/unit tests
 ├── .github/workflows/             # OIDC CI + deploy, and docs → Pages
 ├── docs/                           # documentation site sources (Diátaxis)
 └── .agents/skills/                # installed dbt agent skills
@@ -77,10 +119,14 @@ export DATABRICKS_HOST="https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net"
 export DATABRICKS_AUTH_TYPE="azure-cli"   # reuse your `az login` session
 export BUNDLE_VAR_warehouse_id="<your-warehouse-id>"
 export BUNDLE_VAR_catalog="<your-catalog>"
+export BUNDLE_VAR_schema="dbt_nyc_taxi_dev"
+export BUNDLE_VAR_observability_schema="dbt_observability"
+export BUNDLE_VAR_observability_staging_volume="dbt_artifacts_staging"
+export BUNDLE_VAR_observability_volume="dbt_artifacts"
 
 databricks bundle validate --target dev   # check the config
-databricks bundle deploy   --target dev   # upload + create the job (no Terraform)
-databricks bundle run nyc_taxi_dbt_job --target dev   # seed → table → test
+databricks bundle deploy   --target dev   # upload + create both jobs (no Terraform)
+databricks bundle run nyc_taxi_dbt_job --target dev   # run the source dbt build
 ```
 
 Want to iterate on the models locally first? See
@@ -97,8 +143,8 @@ written against [databricks/cli](https://github.com/databricks/cli) concepts.
 | Section | What it covers |
 |---------|----------------|
 | [Tutorial – User Guide](docs/tutorials/index.md) | A guided, FastAPI‑style path from zero to a deployed, running dbt job |
-| [How‑to guides](docs/how-to/index.md) | Run dbt locally, add a model, set up OIDC CI/CD, deploy to prod |
-| [Reference](docs/reference/index.md) | CLI commands, bundle config, the dbt job resource, every config value, layout |
+| [How‑to guides](docs/how-to/index.md) | Run dbt locally, observe jobs, set up OIDC CI/CD, deploy to prod |
+| [Reference](docs/reference/index.md) | CLI commands, bundle config, the dbt job resources, every config value, layout |
 | [Explanation](docs/explanation/index.md) | Why bundles, the auth model, how dbt connects, keeping secrets out of git |
 
 Build the site locally with `pip install -r requirements-docs.txt && zensical serve`.

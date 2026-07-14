@@ -25,6 +25,9 @@ env:
   BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
   BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
   BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
+  BUNDLE_VAR_prod_deployer_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
+  BUNDLE_VAR_prod_run_as_service_principal_name: ${{ vars.DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME }}
+  BUNDLE_VAR_prod_collector_service_principal_name: ${{ vars.DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME }}
 
 jobs:
   deploy:
@@ -34,9 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: databricks/setup-cli@v1.5.0
+      - uses: databricks/setup-cli@v1.7.0
         with:
-          version: 1.5.0
+          version: 1.7.0
 
       # validate is also run implicitly by deploy; kept explicit for clear logs.
       - name: Validate
@@ -45,6 +48,9 @@ jobs:
       - name: Deploy
         run: databricks bundle deploy --target prod
 
-      # Run the dbt job once (seed -> table -> test) as a post-deploy smoke check.
-      - name: Run dbt job
-        run: databricks bundle run nyc_taxi_dbt_job --target prod
+      # Run one dbt build, then sweep its staged artifacts into governed
+      # evidence and sanitized observability facts as the post-deploy check.
+      - name: Run dbt build and artifact collector
+        run: |
+          databricks bundle run nyc_taxi_dbt_job --target prod
+          databricks bundle run dbt_observability_collector_job --target prod

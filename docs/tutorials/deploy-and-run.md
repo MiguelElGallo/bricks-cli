@@ -10,7 +10,8 @@ table.
 
 !!! info "What's a bundle again?"
     A **Declarative Automation Bundle** packages your code *and* the Databricks
-    resources that run it (here, one job) as YAML you deploy with
+    resources that run it (here, a source job and a collector job) as YAML you
+    deploy with
     `databricks bundle`. The latest CLI deploys it **directly through the APIs —
     no Terraform**. More in
     [Why Declarative Automation Bundles](../explanation/why-asset-bundles.md).
@@ -25,7 +26,10 @@ From the repo root:
 ```bash
 export BUNDLE_VAR_warehouse_id="<your-warehouse-id>"   # the SQL warehouse to use
 export BUNDLE_VAR_catalog="<your-catalog>"             # the Unity Catalog catalog
-export BUNDLE_VAR_schema="dbt_nyc_taxi"                # optional — this is the default
+export BUNDLE_VAR_schema="dbt_nyc_taxi_dev"            # isolate dev data
+export BUNDLE_VAR_observability_schema="dbt_observability"
+export BUNDLE_VAR_observability_staging_volume="dbt_artifacts_staging"
+export BUNDLE_VAR_observability_volume="dbt_artifacts"
 ```
 
 !!! tip "Don't know your warehouse ID?"
@@ -81,8 +85,8 @@ Validation OK!
 
 ??? info "What is the `dev` target?"
     `dev` uses **development mode**: deployed resources are prefixed with
-    `[dev <you>]` and schedules are paused, so the dev *job* stays separate from
-    prod and is easy to clean up. Dev mode isolates the job resource, not the
+    `[dev <you>]` and schedules are paused, so the dev *jobs* stay separate from
+    prod and are easy to clean up. Dev mode isolates the job resources, not the
     data — the dbt task writes to whatever catalog/schema you supply, so point dev
     and prod at different schemas (or override `BUNDLE_VAR_schema` per target) to
     keep their tables apart. `prod` deploys "for real" — see
@@ -90,7 +94,7 @@ Validation OK!
 
 ## Step 2 — Deploy
 
-Now upload the files and create the job — **directly through the APIs**:
+Now upload the files and create both jobs — **directly through the APIs**:
 
 ```bash
 databricks bundle deploy -t dev -p bricks-demo
@@ -102,8 +106,13 @@ Deploying resources...
 Deployment complete!
 ```
 
-Your job now exists in the workspace as `[dev you] nyc_taxi_dbt_job`, with its
-schedule paused so nothing runs until you ask.
+Two jobs now exist in the workspace: the source dbt job and the independent
+artifact collector. Development mode pauses both schedules, so nothing runs
+until you ask. The bundle also creates
+a development-prefixed observability schema plus restricted staging and
+evidence managed Volumes.
+Read the exact schema name from `databricks bundle summary -t dev`; the
+collector creates the Delta tables and views there on the first run.
 
 ## Step 3 — Run
 
@@ -113,30 +122,51 @@ Time to build the table. Trigger the job and wait for it:
 databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo
 ```
 
-The job runs three dbt commands in order, on serverless compute:
+The source job runs one dbt invocation on serverless compute. After it reaches a
+terminal state, run the separately deployed collector job; production does this
+automatically every 15 minutes:
 
 ```mermaid
 flowchart LR
-    s["dbt seed"] --> r["dbt run"] --> t["dbt test"]
+    b["Source job<br/>dbt build"] --> done["terminal source result"]
+    b -->|"--target-path"| s["staging Volume<br/>two JSON artifacts"]
+    schedule["15-minute collector schedule"] --> c["Jobs API<br/>completed runs"]
+    done --> c
+    s --> c
+    c --> v["canonical evidence archive"]
+    c --> h["sanitized health views"]
 ```
 
-When it finishes you'll see a terminal state of **`TERMINATED` / `SUCCESS`** and
-a run URL you can open in the workspace.
+When the source job finishes you'll see a terminal state of **`TERMINATED` /
+`SUCCESS`** and a run URL you can open in the workspace.
 
 !!! check "You did it"
     A successful run means the seed loaded, the `nyc_taxi_trips` table built, and
-    the `not_null` tests passed — end to end, on Databricks.
+    the `not_null` tests passed. This result belongs only to dbt; artifact
+    collection is verified separately.
+
+Run the paused development collector after the source run finishes:
+
+```bash
+databricks bundle run dbt_observability_collector_job -t dev -p bricks-demo
+```
+
+The collector scans completed source runs, reconciles each full attempt-key
+staging leaf, and packages `manifest.json` plus `run_results.json` into a
+deterministic content-addressed archive. It deletes staging only after durable
+capture. Its failure indicates capture or cleanup work; it does not change the
+source dbt result.
 
 ## Step 4 — See the result
 
-The job built `<your-catalog>.dbt_nyc_taxi.nyc_taxi_trips`. Peek at it from
+The job built `<your-catalog>.dbt_nyc_taxi_dev.nyc_taxi_trips`. Peek at it from
 the CLI:
 
 ```bash
 databricks api post /api/2.0/sql/statements -p bricks-demo --json '{
   "warehouse_id": "<your-warehouse-id>",
   "catalog": "<your-catalog>",
-  "schema": "dbt_nyc_taxi",
+  "schema": "dbt_nyc_taxi_dev",
   "statement": "select count(*) as rows, round(avg(trip_minutes), 2) as avg_min from nyc_taxi_trips"
 }'
 ```
@@ -148,13 +178,34 @@ roughly **26 minutes**.
     Prefer a UI? Open the table in **Catalog Explorer**, or run the query in a
     **SQL editor** tab in the workspace.
 
+## Step 5 — See the job health
+
+In a Databricks SQL editor, query the sanitized invocation view:
+
+```sql
+SELECT
+  generated_at,
+  upstream_result_state,
+  capture_status,
+  invocation_status,
+  elapsed_seconds,
+  total_nodes,
+  failed_nodes
+FROM `<your-catalog>`.`<observability-schema-from-bundle-summary>`.`dbt_run_health`
+ORDER BY generated_at DESC
+LIMIT 10;
+```
+
+The result should contain one `COMPLETE` capture. The runbook explains the
+restricted raw archive, Lakeflow join, node drill-down, access grants, and a safe
+forced-failure check: [Observe dbt jobs](../how-to/observe-dbt-jobs.md).
+
 ## Clean up (optional)
 
-When you're done experimenting, tear the `dev` deployment down:
-
-```bash
-databricks bundle destroy -t dev -p bricks-demo
-```
+The collector-created Delta objects must be removed before the bundle-owned
+schema and its staging/evidence Volumes. Follow the exact, target-scoped
+sequence in
+[Clean up an isolated dev validation](../how-to/observe-dbt-jobs.md#clean-up-an-isolated-dev-validation).
 
 ## Recap and next steps
 
@@ -163,7 +214,8 @@ Congratulations — you've completed the tutorial! You:
 - [x] supplied workspace values as `BUNDLE_VAR_*` environment variables,
 - [x] **validated** and **deployed** the bundle with no Terraform,
 - [x] **ran** the serverless dbt job to `TERMINATED SUCCESS`, and
-- [x] **queried** the resulting Delta table.
+- [x] **ran** the independent collector after the source run completed, and
+- [x] **queried** the resulting Delta table and sanitized dbt health evidence.
 
 Where to go next:
 

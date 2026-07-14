@@ -22,6 +22,12 @@ the project) and just want to get a specific job done.
 
     Extend the project with a new model, seed, or test.
 
+-   :lucide-activity: **[Observe dbt jobs](observe-dbt-jobs.md)**
+
+    ---
+
+    Deploy, query, test, and clean up the Databricks-only observability path.
+
 -   :lucide-shield-check: **[Set up secretless CI/CD with OIDC](set-up-oidc-cicd.md)**
 
     ---

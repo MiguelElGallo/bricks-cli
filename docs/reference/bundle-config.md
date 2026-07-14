@@ -27,9 +27,9 @@ include:
   - resources/*.yml
 ```
 
-Globs that compose the configuration. The job lives in
-`resources/nyc_taxi.job.yml`, so resource definitions stay separate from targets.
-See [The dbt job resource](job-resource.md).
+Globs compose the configuration. The source and collector jobs live in separate
+resource files, so their definitions stay separate from each other and from the
+target overrides. See [The dbt job resources](job-resource.md).
 
 ## `variables`
 
@@ -47,11 +47,37 @@ variables:
   schema:
     description: Schema dbt builds objects in.
     default: dbt_nyc_taxi
+  observability_schema:
+    description: Base name for the target-scoped observability schema.
+    default: dbt_observability
+  observability_volume:
+    description: Collector-only managed Volume for canonical dbt archives.
+    default: dbt_artifacts
+  observability_staging_volume:
+    description: Managed Volume for short-lived dbt artifact staging.
+    default: dbt_artifacts_staging
+  job_duration_warning_seconds:
+    description: Native Lakeflow duration-warning threshold.
+    default: 900
+  notification_emails:
+    description: Approved internal notification recipients.
+    type: complex
+    default: []
+  prod_deployer_service_principal_name:
+    description: Application ID of the production deployment identity.
+  prod_run_as_service_principal_name:
+    description: Application ID of the dedicated production dbt identity.
+  prod_collector_service_principal_name:
+    description: Application ID of the dedicated production collector identity.
 ```
 
-The `warehouse_id` and `catalog` defaults are deliberately obvious placeholders;
-`schema` defaults to the safe, non-sensitive value `dbt_nyc_taxi`. Supply real
-values at deploy time via `BUNDLE_VAR_*` — see
+The `warehouse_id` and `catalog` defaults are deliberately obvious placeholders.
+The schema, observability, duration, and notification settings have
+non-sensitive operational defaults; the three production identity variables
+have no defaults. The schema resource appends `_${bundle.target}` to
+`observability_schema`, separating `dev` and `prod`; development mode also
+applies its user-specific resource prefix. Supply overrides at deploy time via
+`BUNDLE_VAR_*` or a target-specific ignored override file — see
 [Configuration values](configuration-values.md).
 
 !!! note "Where the host comes from"
@@ -75,8 +101,43 @@ targets:
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     permissions:
-      - user_name: ${workspace.current_user.userName}
+      - service_principal_name: ${var.prod_deployer_service_principal_name}
         level: CAN_MANAGE
+    resources:
+      jobs:
+        nyc_taxi_dbt_job:
+          run_as:
+            service_principal_name: ${var.prod_run_as_service_principal_name}
+          permissions:
+            - service_principal_name: ${var.prod_collector_service_principal_name}
+              level: CAN_VIEW
+        dbt_observability_collector_job:
+          run_as:
+            service_principal_name: ${var.prod_collector_service_principal_name}
+      schemas:
+        dbt_observability:
+          grants:
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+            - principal: ${var.prod_run_as_service_principal_name}
+              privileges: [USE_SCHEMA]
+          lifecycle:
+            prevent_destroy: true
+      volumes:
+        dbt_artifacts:
+          grants:
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges: [READ_VOLUME, WRITE_VOLUME]
+          lifecycle:
+            prevent_destroy: true
+        dbt_artifact_staging:
+          grants:
+            - principal: ${var.prod_run_as_service_principal_name}
+              privileges: [WRITE_VOLUME]
+            - principal: ${var.prod_collector_service_principal_name}
+              privileges: [READ_VOLUME, WRITE_VOLUME]
+          lifecycle:
+            prevent_destroy: true
 ```
 
 | Field | Meaning |
@@ -85,6 +146,12 @@ targets:
 | `mode: production` | Deploys "for real" to a `root_path` under the deploying principal's home (the CI service principal in automation), with declared permissions |
 | `default: true` | Used when `--target` is omitted |
 | `${workspace.current_user.userName}` | Resolved at deploy time — no hard-coded user name |
+| `permissions.*.service_principal_name` | Classifies the explicit production deployer correctly in the job ACL |
+| `jobs.*.run_as` | Executes the source and collector with distinct service principals rather than the deployer |
+| source-job `permissions` | Gives only the collector `CAN_VIEW` access to completed source runs |
+| staging Volume grants | Gives the source read/write access only to staging and the collector read/write reconciliation access |
+| evidence Volume grants | Gives only the collector read/write access to canonical evidence |
+| `lifecycle.prevent_destroy` | Blocks ordinary production deletion of the evidence schema and both Volumes |
 
 !!! tip "Deployment modes"
     `development` mode is what makes the `dev` target safe to iterate in: nothing
@@ -99,3 +166,15 @@ databricks bundle <command> --target dev    # or: -t prod
 
 Or set `DATABRICKS_BUNDLE_TARGET` (the older `DATABRICKS_BUNDLE_ENV` is a
 deprecated alias).
+
+## Included resource files
+
+| File | Resources |
+|------|-----------|
+| `resources/nyc_taxi.job.yml` | Source dbt job with native health and notifications |
+| `resources/dbt_observability_collector.job.yml` | Independent scheduled collector with native health and notifications |
+| `resources/observability.infrastructure.yml` | Target-scoped Unity Catalog schema plus staging and evidence managed Volumes |
+
+The collector creates Delta tables and views inside the schema on its first run.
+Those objects are runtime evidence rather than separate bundle resources. See
+[Observe dbt jobs](../how-to/observe-dbt-jobs.md) for access grants and cleanup.
