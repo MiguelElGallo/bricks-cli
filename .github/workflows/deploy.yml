@@ -49,6 +49,23 @@ jobs:
       - name: Deploy
         run: databricks bundle deploy --target prod
 
+      # Keep production code writable only by the deployer. The source identity
+      # can read the dbt project; the collector can run its notebook but cannot
+      # edit or manage any deployed file.
+      - name: Grant run identities access to deployed files
+        run: |
+          set -euo pipefail
+          bundle_files=$(databricks bundle summary --target prod --output json | jq -er '.workspace.file_path')
+          object_id=$(databricks workspace get-status "$bundle_files" --output json | jq -er '.object_id')
+          acl=$(jq -cn \
+            --arg runner "$BUNDLE_VAR_prod_run_as_service_principal_name" \
+            --arg collector "$BUNDLE_VAR_prod_collector_service_principal_name" \
+            '{access_control_list: [
+              {service_principal_name: $runner, permission_level: "CAN_READ"},
+              {service_principal_name: $collector, permission_level: "CAN_RUN"}
+            ]}')
+          databricks permissions update directories "$object_id" --json "$acl"
+
       # Run one dbt build, then sweep its staged artifacts into governed
       # evidence and sanitized observability facts as the post-deploy check.
       - name: Run dbt build and artifact collector

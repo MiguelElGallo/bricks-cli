@@ -124,6 +124,7 @@ def _capture_context(
     task_run_id: int = 4,
     repair_count: int = 0,
     execution_count: int = 0,
+    upstream_result_state: str = "success",
 ) -> collector_notebook.CaptureContext:
     return collector_notebook.CaptureContext(
         workspace_id=1,
@@ -133,7 +134,7 @@ def _capture_context(
         repair_count=repair_count,
         execution_count=execution_count,
         task_key="dbt_nyc_taxi",
-        upstream_result_state="success",
+        upstream_result_state=upstream_result_state,
         catalog="catalog",
         schema="schema",
         volume="volume",
@@ -528,6 +529,7 @@ def _task(
     run_id: int,
     *,
     job_run_id: int,
+    attempt_number: int = 0,
     result_state: str | None = "SUCCESS",
     termination_code: str | None = None,
     instrumented: bool = True,
@@ -558,6 +560,7 @@ def _task(
     return SimpleNamespace(
         task_key="dbt_nyc_taxi",
         run_id=run_id,
+        attempt_number=attempt_number,
         dbt_task=SimpleNamespace(commands=[command]),
         state=state,
         status=status,
@@ -629,13 +632,101 @@ def test_capture_discovery_returns_full_context_and_independent_gap(
             ),
         ),
         gaps=(
-            collector_notebook.DiscoveryGap(job_run_id=100, task_run_id=12),
-            collector_notebook.DiscoveryGap(job_run_id=100, task_run_id=13),
+            collector_notebook.CaptureContext(
+                workspace_id=1,
+                job_id=2,
+                job_run_id=100,
+                task_run_id=12,
+                repair_count=0,
+                execution_count=1,
+                task_key="dbt_nyc_taxi",
+                upstream_result_state="failed",
+                catalog="catalog",
+                schema="schema",
+                volume="volume",
+                staging_volume="staging",
+            ),
+            collector_notebook.CaptureContext(
+                workspace_id=1,
+                job_id=2,
+                job_run_id=100,
+                task_run_id=13,
+                repair_count=0,
+                execution_count=1,
+                task_key="dbt_nyc_taxi",
+                upstream_result_state="success",
+                catalog="catalog",
+                schema="schema",
+                volume="volume",
+                staging_volume="staging",
+            ),
         ),
     )
     assert jobs.kwargs["job_id"] == 2
     assert jobs.kwargs["completed_only"] is True
     assert jobs.kwargs["expand_tasks"] is True
+
+
+def test_discovery_gap_maps_original_retry_and_repair_attempt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        collector_notebook,
+        "_numeric_staging_directories",
+        lambda *_args: [],
+    )
+    tasks = [
+        _task(
+            30,
+            job_run_id=300,
+            attempt_number=0,
+            result_state=None,
+            termination_code="RUN_EXECUTION_ERROR",
+            templated=True,
+        ),
+        _task(
+            31,
+            job_run_id=300,
+            attempt_number=1,
+            result_state=None,
+            termination_code="RUN_EXECUTION_ERROR",
+            templated=True,
+        ),
+        _task(
+            32,
+            job_run_id=300,
+            attempt_number=2,
+            templated=True,
+        ),
+    ]
+    jobs = _ListRunsJobs(
+        [
+            SimpleNamespace(
+                job_id=2,
+                run_id=300,
+                start_time=3_000,
+                tasks=tasks,
+                repair_history=[
+                    SimpleNamespace(task_run_ids=[30]),
+                    SimpleNamespace(task_run_ids=[32]),
+                ],
+            )
+        ]
+    )
+
+    discovery = collector_notebook._completed_capture_contexts(
+        cast(Any, SimpleNamespace(jobs=jobs)),
+        _collector_config(),
+    )
+
+    assert [gap.task_run_id for gap in discovery.gaps] == [30, 31, 32]
+    assert [gap.repair_count for gap in discovery.gaps] == [0, 0, 1]
+    assert [gap.execution_count for gap in discovery.gaps] == [1, 2, 3]
+    assert [gap.upstream_result_state for gap in discovery.gaps] == [
+        "failed",
+        "failed",
+        "success",
+    ]
 
 
 def test_discovery_suppresses_post_cleanup_gap_for_terminal_template_task(
@@ -932,6 +1023,67 @@ def test_main_reconciles_cleanup_without_recapturing(
         ("delete", context, None),
         ("record", context, (True, None)),
     ]
+
+
+def test_main_persists_discovery_gap_as_not_produced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _collector_config()
+    gap = _capture_context(
+        job_run_id=31,
+        task_run_id=41,
+        repair_count=0,
+        execution_count=2,
+        upstream_result_state="failed",
+    )
+    _patch_main_runtime(monkeypatch, config)
+    monkeypatch.setattr(
+        collector_notebook,
+        "_completed_capture_contexts",
+        lambda *_args: collector_notebook.CaptureDiscovery(contexts=(), gaps=(gap,)),
+    )
+    states = iter(
+        [
+            collector_notebook.RegistryCaptureState(
+                terminal_attempts=frozenset(),
+                last_attempted_at={},
+                cleanup_pending=(),
+            ),
+            collector_notebook.RegistryCaptureState(
+                terminal_attempts=frozenset({gap.attempt_key}),
+                last_attempted_at={gap.attempt_key: 100.0},
+                cleanup_pending=(gap,),
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        collector_notebook,
+        "_registry_capture_state",
+        lambda *_args: next(states),
+    )
+    registry_rows: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        collector_notebook,
+        "_upsert_registry",
+        lambda _spark, _context, row: registry_rows.append(row),
+    )
+    monkeypatch.setattr(collector_notebook, "_delete_staging", lambda _context: None)
+    monkeypatch.setattr(
+        collector_notebook,
+        "_record_staging_cleanup",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete for 1 task run"):
+        collector_notebook.main()
+
+    assert len(registry_rows) == 1
+    columns = [field.strip().split()[0] for field in collector_notebook._REGISTRY_SCHEMA.split(",")]
+    values = dict(zip(columns, registry_rows[0], strict=True))
+    assert values["repair_count"] == 0
+    assert values["execution_count"] == 2
+    assert values["capture_status"] == "NOT_PRODUCED"
+    assert values["capture_error_code"] == "STAGED_ARTIFACT_NOT_PRODUCED"
 
 
 def test_main_batches_unseen_then_oldest_retry_and_reports_deferred(
