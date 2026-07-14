@@ -4,87 +4,109 @@ icon: lucide/key-round
 
 # The authentication model
 
-The Databricks CLI follows **Databricks Unified Authentication**: every command
-(and every bundle deploy) looks for credentials in the same well-defined order,
-so the same configuration works locally, in scripts, and in CI.
+This repository uses two Databricks OAuth flows for two different actors:
 
-## How the CLI finds credentials
+- a person signs in locally with **OAuth user-to-machine (U2M)**; and
+- GitHub Actions signs in as the deployment service principal with
+  **OAuth machine-to-machine (M2M)**.
 
-In order, the CLI uses the first of these that is complete:
+Both flows use
+[Databricks unified authentication](https://docs.databricks.com/aws/en/dev-tools/auth/).
+The difference is who authenticates and where the credential is held.
 
-1. **Bundle settings files** — for commands run from a bundle working directory
-   (e.g. `targets.<name>.workspace.host` in `databricks.yml`, which this repo
-   leaves unset, so the host comes from `DATABRICKS_HOST` or your profile). These
-   can select the host/target but never store credentials directly.
-2. **Environment variables** — `DATABRICKS_HOST`, `DATABRICKS_TOKEN`,
-   `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET`, `DATABRICKS_AUTH_TYPE`, …
-3. **A profile** in `~/.databrickscfg` (selected by `--profile`/`-p`, else
-   `DEFAULT`).
-
-Cloud-native methods are **not** a separate tier: they're chosen *within* steps
-2–3 via `auth_type`. For Azure that includes `azure-cli` (reuse your `az`
-session), `azure-msi` (managed identity), and Microsoft Entra ID service
-principals (OAuth M2M). A host plus *one* valid credential source is all that's
-needed.
-
-## What this repo uses locally: Azure CLI auth
-
-Because the workspace is Azure Databricks and you're already signed in to Azure,
-the simplest local setup lets the CLI reuse your `az` login:
-
-```ini title="~/.databrickscfg"
-[bricks-demo]
-host      = https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net
-auth_type = azure-cli
-```
-
-`auth_type = azure-cli` makes the CLI mint short-lived Microsoft Entra ID tokens
-from your `az` session on demand. The profile stores only a host and an auth
-*method*.
-
-## What this repo uses in CI: GitHub OIDC
-
-In GitHub Actions there's no `az` session, so the workflows use **Workload
-Identity Federation** instead:
+## One workspace, two authentication paths
 
 ```mermaid
-sequenceDiagram
-    participant GH as GitHub Actions
-    participant DBX as Databricks account
-    GH->>GH: mint short-lived OIDC token (id-token: write)
-    GH->>DBX: present OIDC token (aud = workspace token endpoint)
-    DBX->>DBX: federation policy trusts repo + environment?
-    DBX-->>GH: short-lived Databricks access token
-    GH->>DBX: databricks bundle deploy
+flowchart LR
+    person["Developer or administrator"] -->|"browser login (U2M)"| cli["Databricks CLI"]
+    github["Protected GitHub prod environment"] -->|"client ID + secret (M2M)"| deployer["Deployment service principal"]
+    cli --> workspace["Databricks workspace"]
+    deployer --> workspace
 ```
 
-The federation policy scopes the trust to one repo + environment, and the issued
-tokens expire in minutes. Setup is in
-[Set up secretless CI/CD with OIDC](../how-to/set-up-oidc-cicd.md).
+### Local work uses OAuth U2M
 
-## Credential options at a glance
+`databricks auth login` opens a browser, completes an interactive workspace
+login, and caches the resulting OAuth state locally. By default, current CLI
+versions use the operating system's secure credential store. A plaintext file
+fallback can be configured; when it is, that file must be protected as
+credential-bearing local state. The profile names the workspace and lets later
+CLI commands refresh a short-lived token without placing a PAT in the
+repository.
 
-| Method | Stores a secret? | Best for |
-|--------|------------------|----------|
-| **Azure CLI** (`auth_type = azure-cli`) | No | Local dev on Azure (this repo) |
-| **OAuth U2M** (`databricks auth login`) | No (browser sign-in, cached) | Local dev, any cloud |
-| **OAuth M2M** (service principal id + secret) | Yes (secret) | Automation without OIDC |
-| **GitHub OIDC** (`auth_type = github-oidc`) | **No** | CI/CD (this repo) |
-| **PAT** (personal access token) | Yes (token) | Quick tests; least preferred |
+The cached login belongs to the human who completed the browser flow. It is
+appropriate for local administration and development, not unattended CI.
+Follow [Connect to Databricks](../tutorials/connect-to-databricks.md) for the
+login procedure, and use
+[Authentication support](../reference/authentication-support.md) for the exact
+CLI contract.
 
-## Profiles vs. environment variables
+### Production deployment uses OAuth M2M
 
-- **Profiles** (`~/.databrickscfg`) are convenient for humans juggling several
-  workspaces. Select one with `-p/--profile`, or set
-  `DATABRICKS_CONFIG_PROFILE=bricks-demo`.
-- **Environment variables** are best for CI and containers. For a bundle, set
-  `DATABRICKS_HOST` and one credential; bundles also honor
-  `DATABRICKS_BUNDLE_TARGET` to pick the target (the older `DATABRICKS_BUNDLE_ENV`
-  is a deprecated alias).
+The production workflow explicitly selects OAuth M2M and supplies the workspace
+host, deployer application ID, and protected client secret through GitHub. The
+host and application ID are configuration; the client secret is a reusable
+credential stored only in the protected GitHub `prod` environment. GitHub
+releases an environment secret to a job only after the environment's protection
+rules have passed. See
+[Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 
-## dbt's connection is separate
+M2M authenticates the **deployer**. It does not make every Databricks job run as
+that identity. The bundle assigns the source and collector jobs their own
+`run_as` service principals.
 
-The CLI auth above is for **deploying** the bundle. The dbt **adapter** has its
-own connection — covered in
-[How dbt connects to Databricks](how-dbt-connects.md). The short version: the
-deployed job gets credentials injected by Databricks; local runs read env vars.
+The exact variables belong to
+[Configuration values](../reference/configuration-values.md); the protected
+environment procedure belongs to
+[Set up OAuth M2M CI/CD](../how-to/set-up-m2m-cicd.md).
+
+## Why GitHub OIDC is not used here
+
+Databricks can exchange a GitHub OIDC token through workload identity
+federation. Configuring that trust requires an account-level service-principal
+federation policy. This personal Free Edition workspace has no account console
+or account APIs, so that policy cannot be configured here.
+
+That is a Free Edition capability boundary, not a limitation caused by using a
+personal email address. Workspace OAuth U2M and workspace service-principal M2M
+remain usable. See the official
+[GitHub federation setup](https://docs.databricks.com/aws/en/dev-tools/auth/provider-github)
+and
+[Free Edition limitations](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations).
+
+The Free Edition page's email OTP, Google, and Microsoft list describes the
+available interactive sign-in providers and the absence of enterprise SSO/SCIM.
+It does not prohibit workspace API OAuth after sign-in: U2M and M2M were both
+validated against this workspace. Account-level federation remains the missing
+capability.
+
+If the project later moves to a Databricks account with account-level identity
+federation, OIDC can replace the deployer secret after a separate migration and
+verification. It is not the current authentication path.
+
+## How unified authentication chooses credentials
+
+The CLI can read a host and credentials from environment variables or a profile
+in `~/.databrickscfg`. Explicitly selecting the intended source prevents a local
+profile, PAT, or automation credential from winning unexpectedly. Local work
+selects the U2M profile; protected automation pins OAuth M2M.
+
+The bundle deliberately omits the workspace host. Authentication context
+therefore selects the workspace without committing a workspace-specific URL.
+
+## CLI authentication and dbt authentication are related, not identical
+
+The CLI uses U2M or M2M to call workspace APIs. A deployed Databricks `dbt_task`
+runs with its assigned service principal and receives a generated dbt
+connection. A local dbt Core process instead reads `DBT_*` environment
+variables, including a short-lived token obtained from the U2M cache.
+
+The complete connection path is explained in
+[How dbt connects to Databricks](how-dbt-connects.md).
+
+The repository deliberately maps one authentication method to each actor instead
+of treating PAT, M2M, and OIDC as interchangeable fallbacks. The canonical
+support matrix is in
+[Authentication support](../reference/authentication-support.md). For general
+CLI behavior, see
+[Authenticate the Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/authentication).

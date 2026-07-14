@@ -4,79 +4,86 @@ icon: lucide/folder-tree
 
 # Project layout
 
-What every file and directory is for.
+This repository keeps deployable configuration, dbt sources, observability
+code, tests, and documentation in one bundle root.
 
 ```text
 .
-├── databricks.yml                  # bundle definition + dev/prod targets
+├── databricks.yml
 ├── resources/
-│   ├── nyc_taxi.job.yml             # source dbt job
-│   ├── dbt_observability_collector.job.yml # scheduled collector job
-│   └── observability.infrastructure.yml # UC schema + staging/evidence Volumes
-├── dbt_project.yml                 # dbt project (paths under src/)
-├── dbt_profiles/
-│   └── profiles.yml                # dbt profile for local runs (env-var based)
-├── profile_template.yml            # prompts for `dbt init` (local profile)
-├── requirements-dev.txt            # exact dbt, SDK, test, lint, and type pins
-├── pyproject.toml                  # pytest, Ruff, and ty configuration
-├── requirements-docs.txt           # Zensical (builds this docs site)
-├── zensical.toml                   # documentation site configuration
+│   ├── nyc_taxi.job.yml
+│   ├── dbt_observability_collector.job.yml
+│   └── observability.infrastructure.yml
+├── dbt_project.yml
+├── dbt_profiles/profiles.yml
+├── profile_template.yml
 ├── src/
-│   ├── seeds/nyc_taxi/             # the seed CSV + its properties
-│   ├── models/nyc_taxi/           # the single table model + tests
-│   ├── observability/              # artifact collector + pure parser helpers
-│   └── analyses/, macros/, snapshots/, tests/   # standard dbt folders (empty)
-├── tests/                          # isolated artifact parser/security tests
-├── docs/                           # this documentation site (Markdown sources)
-├── .github/workflows/             # CI (validate), deploy (OIDC), docs (Pages)
-└── .agents/skills/                # installed dbt agent skills
+│   ├── models/nyc_taxi/
+│   ├── seeds/nyc_taxi/
+│   └── observability/
+│       ├── collect_dbt_artifacts.py
+│       └── collector_core.py
+├── tests/
+│   ├── test_collector_core.py
+│   └── test_job_resources.py
+├── .github/workflows/
+│   ├── ci.yml
+│   ├── deploy.yml
+│   └── docs.yml
+├── docs/
+├── pyproject.toml
+├── requirements-dev.txt
+├── requirements-docs.txt
+└── zensical.toml
 ```
 
 ## Key files
 
-| Path | Role |
-|------|------|
-| `databricks.yml` | Bundle root — see [Bundle configuration](bundle-config.md) |
-| `resources/nyc_taxi.job.yml` | Source dbt job — see [The dbt job resources](job-resource.md) |
-| `resources/dbt_observability_collector.job.yml` | Independent 15-minute collector job |
-| `resources/observability.infrastructure.yml` | Target-scoped observability schema plus staging and evidence managed Volumes |
-| `dbt_project.yml` | dbt paths and seed/model config |
-| `dbt_profiles/profiles.yml` | Local-only dbt connection, fully env-var based |
-| `pyproject.toml` | pytest discovery plus Ruff and ty settings |
-| `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | 100-row seed from `samples.nyctaxi.trips` |
-| `src/models/nyc_taxi/nyc_taxi_trips.sql` | The one table model |
-| `src/observability/collect_dbt_artifacts.py` | Serverless collector notebook |
-| `src/observability/collector_core.py` | Pure archive validation and normalization helpers |
-| `tests/test_collector_core.py` | Offline security, schema, sanitization, and idempotency tests |
-| `.github/workflows/ci.yml` | PR validation (dev) via OIDC |
-| `.github/workflows/deploy.yml` | Deploy + run (prod) via OIDC |
-| `.github/workflows/docs.yml` | Build & publish this site to GitHub Pages |
+| Path | Responsibility |
+|------|----------------|
+| `databricks.yml` | Bundle identity, variables, targets, production identities, grants, and retention guards |
+| `resources/nyc_taxi.job.yml` | Source serverless dbt job |
+| `resources/dbt_observability_collector.job.yml` | Scheduled collector job and notebook parameters |
+| `resources/observability.infrastructure.yml` | Target-scoped schema plus staging and evidence managed Volumes |
+| `dbt_project.yml` | dbt project, paths, materialization, typed seed, and anonymous-telemetry setting |
+| `dbt_profiles/profiles.yml` | Environment-only local dbt connection targets |
+| `src/observability/collector_core.py` | Pure archive validation and allowlisted normalization |
+| `src/observability/collect_dbt_artifacts.py` | Deployed notebook adapter, Jobs discovery, Delta persistence, views, and cleanup |
+| `tests/test_collector_core.py` | Collector security, state, idempotency, and schema tests |
+| `tests/test_job_resources.py` | Bundle/job contract tests |
+| `.github/workflows/ci.yml` | Credential-free PR quality, strict docs build, and offline dbt graph validation |
+| `.github/workflows/deploy.yml` | Protected OAuth M2M production deployment and two-job smoke test |
+| `.github/workflows/docs.yml` | Strict Zensical build and GitHub Pages publication |
 
-## What's git-ignored
+## dbt tree
 
-These local state files — which can carry workspace values — are git-ignored:
+| Path | Resource |
+|------|----------|
+| `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | Committed 100-row seed |
+| `src/seeds/nyc_taxi/properties.yml` | Seed metadata |
+| `src/models/nyc_taxi/nyc_taxi_trips.sql` | Single Delta-table model |
+| `src/models/nyc_taxi/schema.yml` | Model descriptions and two `not_null` tests |
 
-```text
-.databricks/            # bundle state (host, user) — local only
-.venv/  target/  logs/  dbt_packages/
-.databrickscfg  *.local.yml  **/variable-overrides*.json  .env.local
-/site/  docs/_build/    # built documentation output
-```
+See [dbt project](dbt-project.md) for the executable contract.
 
-## dbt agent skills
+## Generated and local-only paths
 
-The official
-[dbt-labs/dbt-agent-skills](https://github.com/dbt-labs/dbt-agent-skills) are
-installed under `.agents/skills/` (via the Vercel `skills` CLI):
+The following are ignored and must not be committed:
 
-```bash
-npx skills add dbt-labs/dbt-agent-skills/skills/dbt \
-  --agent github-copilot --skill '*' -y --copy
-```
+| Path | Contents |
+|------|----------|
+| `.databricks/` | Local bundle state and overrides |
+| `.databrickscfg` | Local CLI profiles if created inside the repository |
+| `.env*`, `*.local.yml`, `*.local.yaml` | Local values and secrets |
+| `target/`, `logs/`, `dbt_packages/` | dbt output and packages |
+| `.venv/`, Python/tool caches | Local development environment |
+| `site/`, `docs/_build/` | Generated documentation |
 
-These are [Agent Skills](https://agentskills.io/) — folders of instructions an AI
-agent loads automatically when your request matches (for example,
-`using-dbt-for-analytics-engineering`, `running-dbt-commands`,
-`adding-dbt-unit-test`). They make an agent more accurate at writing and running
-dbt for the **dbt-databricks** adapter used here. `skills-lock.json` records the
-installed set.
+`~/.databrickscfg` is outside the repository but should still be treated as
+credential-bearing local configuration.
+
+## Agent skills
+
+`.agents/skills/` contains copied dbt agent-skill instructions and
+`skills-lock.json` records their installation. They are development aids and
+are not uploaded as Lakeflow tasks or imported by the collector runtime.

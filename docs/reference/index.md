@@ -4,43 +4,53 @@ icon: lucide/book-open
 
 # Reference
 
-The facts, organized for lookup. These pages describe exactly what's in the repo
-— commands, fields, values, and layout — without tutorial narration.
+This section is the exact contract for the repository as committed: names,
+versions, inputs, defaults, permissions, paths, schemas, states, and errors.
+Use the [tutorial](../tutorials/index.md) to learn the project and the
+[how-to guides](../how-to/index.md) to complete an operational task.
 
-<div class="grid cards" markdown>
+!!! info "Source of truth"
+    These pages mirror `databricks.yml`, `resources/`, `.github/workflows/`,
+    `dbt_project.yml`, and `src/observability/`. If prose and executable source
+    ever disagree, the executable source wins and the reference needs updating.
 
--   :lucide-terminal: **[CLI commands](cli-commands.md)**
+## Project and delivery
 
-    ---
+| Page | Contract |
+|------|----------|
+| [CLI commands](cli-commands.md) | Commands used by this repository |
+| [dbt project](dbt-project.md) | dbt paths, profile, seed, model, and tests |
+| [Bundle configuration](bundle-config.md) | Bundle identity, targets, variables, and resources |
+| [Configuration values](configuration-values.md) | Every runtime input and where it is supplied |
+| [GitHub workflows](workflows.md) | CI, production deployment, and Pages publication |
+| [Project layout](project-layout.md) | Repository paths and ownership |
+| [Runtime versions](runtime-versions.md) | Pinned CLI, Python, dbt, SDK, and docs versions |
 
-    The `databricks bundle` subcommands and dbt commands this project uses, plus
-    handy global flags.
+## Jobs and evidence
 
--   :lucide-file-cog: **[Bundle configuration](bundle-config.md)**
+| Page | Contract |
+|------|----------|
+| [Source dbt job](source-job.md) | Schedule, dbt task, retry, staging, and notifications |
+| [Artifact collector job](collector-job.md) | Schedule, inputs, batching, outputs, and failure behavior |
+| [Observability objects](observability-objects.md) | Three restricted tables and five curated views |
+| [AttemptKey](attempt-key.md) | Six-field identity used everywhere |
+| [Capture states](capture-states.md) | Capture, cleanup, and combined evidence states |
+| [Evidence layout](evidence-layout.md) | Staging, canonical archive, quarantine, and limits |
+| [Error codes](error-codes.md) | Full allowlisted collector error dictionary |
 
-    ---
+## Security
 
-    Every field in `databricks.yml`: `bundle`, `include`, `variables`, and the
-    `dev` / `prod` targets.
+| Page | Contract |
+|------|----------|
+| [Authentication support](authentication-support.md) | Active and unavailable authentication methods |
+| [Permissions](permissions.md) | Deployer, runner, collector, and operator access |
 
--   :lucide-briefcase: **[The dbt job resources](job-resource.md)**
+Use the [Glossary](glossary.md) for repository-specific terminology.
 
-    ---
+## Compatibility URLs
 
-    The independent dbt source and collector jobs, native health controls,
-    tables, and views.
+Two unnaved pages preserve previously published links without duplicating a
+current contract:
 
--   :lucide-sliders-horizontal: **[Configuration values](configuration-values.md)**
-
-    ---
-
-    The complete contract of bundle variables, `BUNDLE_VAR_*`, GitHub Variables,
-    and `DBT_*` environment variables.
-
--   :lucide-folder-tree: **[Project layout](project-layout.md)**
-
-    ---
-
-    What every file and directory is for, including the dbt agent skills.
-
-</div>
+- [Former combined job-resource page](job-resource.md)
+- [Former GitHub OIDC setup page](../how-to/set-up-oidc-cicd.md)

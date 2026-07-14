@@ -8,12 +8,12 @@
 [project]
 
 site_name = "bricks-cli"
-site_description = "Deploy and observe a dbt Core project on Azure Databricks with Declarative Automation Bundles."
+site_description = "Deploy and observe dbt Core jobs with Databricks-native evidence and health views."
 site_author = "bricks-cli contributors"
 
 # GitHub Pages project URL. Asset links are relative, so the project subpath
 # (/bricks-cli/) resolves correctly. This is the public GitHub repo URL — it is
-# not a Databricks workspace or Microsoft Entra identifier.
+# not a Databricks workspace or identity-provider identifier.
 site_url = "https://miguelelgallo.github.io/bricks-cli/"
 
 repo_url = "https://github.com/MiguelElGallo/bricks-cli"
@@ -27,31 +27,78 @@ Copyright &copy; 2026 bricks-cli contributors
 # Diataxis navigation. Each top-level entry is a Diataxis quadrant.
 nav = [
   { "bricks-cli" = "index.md" },
-  { "Tutorial - User Guide" = [
-      { "Tutorial - User Guide" = "tutorials/index.md" },
+  { "Tutorial" = [
+      { "Deploy and observe a dbt job" = "tutorials/index.md" },
       { "Install the Databricks CLI" = "tutorials/install-the-cli.md" },
       { "Connect to Databricks" = "tutorials/connect-to-databricks.md" },
       { "Explore the dbt project" = "tutorials/explore-the-project.md" },
-      { "Deploy and run the job" = "tutorials/deploy-and-run.md" },
+      { "Deploy and run the source job" = "tutorials/deploy-and-run.md" },
+      { "Observe your first run" = "tutorials/observe-your-first-run.md" },
+      { "Clean up the tutorial" = "tutorials/clean-up-the-tutorial.md" },
   ]},
   { "How-to guides" = [
       { "How-to guides" = "how-to/index.md" },
-      { "Run dbt locally" = "how-to/run-dbt-locally.md" },
-      { "Add a dbt model" = "how-to/add-a-model.md" },
-      { "Observe dbt jobs" = "how-to/observe-dbt-jobs.md" },
-      { "Set up secretless CI/CD with OIDC" = "how-to/set-up-oidc-cicd.md" },
-      { "Deploy to production" = "how-to/deploy-to-production.md" },
+      { "Develop dbt" = [
+          { "Run dbt locally" = "how-to/run-dbt-locally.md" },
+          { "Add a dbt model" = "how-to/add-a-model.md" },
+          { "Change the deployed selection" = "how-to/change-the-deployed-selection.md" },
+      ]},
+      { "Provision and deploy" = [
+          { "Set up protected OAuth M2M deployment" = "how-to/set-up-m2m-cicd.md" },
+          { "Grant production prerequisites" = "how-to/grant-production-prerequisites.md" },
+          { "Deploy to production" = "how-to/deploy-to-production.md" },
+          { "Verify a production deployment" = "how-to/verify-production-deployment.md" },
+      ]},
+      { "Maintain production access" = [
+          { "Rotate the deployer secret" = "how-to/rotate-the-deployer-secret.md" },
+          { "Repair production runtime file access" = "how-to/grant-production-runtime-access.md" },
+          { "Rotate runtime identities" = "how-to/rotate-runtime-identities.md" },
+      ]},
+      { "Monitor" = [
+          { "Observability operations" = "how-to/observe-dbt-jobs.md" },
+          { "Configure native alerts" = "how-to/configure-native-alerts.md" },
+          { "Query job health" = "how-to/query-job-health.md" },
+          { "Grant operator access" = "how-to/grant-operator-access.md" },
+      ]},
+      { "Recover and manage evidence lifecycle" = [
+          { "Investigate a source failure" = "how-to/investigate-a-source-failure.md" },
+          { "Investigate a collector failure" = "how-to/investigate-a-collector-failure.md" },
+          { "Verify missing-artifact capture" = "how-to/verify-failure-capture.md" },
+          { "Clean up development" = "how-to/clean-up-development.md" },
+          { "Decommission the production deployment and evidence" = "how-to/decommission-production-evidence.md" },
+      ]},
   ]},
   { "Reference" = [
       { "Reference" = "reference/index.md" },
-      { "CLI commands" = "reference/cli-commands.md" },
-      { "Bundle configuration" = "reference/bundle-config.md" },
-      { "The dbt job resources" = "reference/job-resource.md" },
-      { "Configuration values" = "reference/configuration-values.md" },
-      { "Project layout" = "reference/project-layout.md" },
+      { "Project and delivery" = [
+          { "CLI commands" = "reference/cli-commands.md" },
+          { "dbt project" = "reference/dbt-project.md" },
+          { "Bundle configuration" = "reference/bundle-config.md" },
+          { "Configuration values" = "reference/configuration-values.md" },
+          { "Workflows" = "reference/workflows.md" },
+          { "Project layout" = "reference/project-layout.md" },
+          { "Runtime versions" = "reference/runtime-versions.md" },
+      ]},
+      { "Jobs and evidence" = [
+          { "Source job" = "reference/source-job.md" },
+          { "Collector job" = "reference/collector-job.md" },
+          { "Observability objects" = "reference/observability-objects.md" },
+          { "AttemptKey" = "reference/attempt-key.md" },
+          { "Capture states" = "reference/capture-states.md" },
+          { "Evidence layout" = "reference/evidence-layout.md" },
+          { "Error codes" = "reference/error-codes.md" },
+      ]},
+      { "Security" = [
+          { "Authentication support" = "reference/authentication-support.md" },
+          { "Permissions" = "reference/permissions.md" },
+      ]},
+      { "Glossary" = "reference/glossary.md" },
   ]},
   { "Explanation" = [
       { "Explanation" = "explanation/index.md" },
+      { "Native observability architecture" = "explanation/native-observability.md" },
+      { "Evidence lifecycle" = "explanation/evidence-lifecycle.md" },
+      { "Development and production" = "explanation/development-vs-production.md" },
       { "Why Declarative Automation Bundles" = "explanation/why-asset-bundles.md" },
       { "The authentication model" = "explanation/authentication.md" },
       { "How dbt connects to Databricks" = "explanation/how-dbt-connects.md" },

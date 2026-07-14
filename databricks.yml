@@ -21,10 +21,8 @@ include:
 variables:
   warehouse_id:
     description: ID of the SQL warehouse the dbt task runs against.
-    default: REPLACE_WITH_YOUR_WAREHOUSE_ID
   catalog:
     description: Unity Catalog catalog dbt writes to.
-    default: REPLACE_WITH_YOUR_CATALOG
   schema:
     description: Schema dbt builds objects in.
     default: dbt_nyc_taxi
@@ -92,9 +90,10 @@ targets:
   prod:
     mode: production
     workspace:
-      # A single, well-known copy under the deploying principal's home, resolved
-      # from the current user rather than a hard-coded name.
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      # A single, identity-stable copy under the configured deployer service
+      # principal's home. Resolving this from the variable prevents a human U2M
+      # inspection from silently targeting a different production state root.
+      root_path: /Workspace/Users/${var.prod_deployer_service_principal_name}/.bundle/${bundle.name}/${bundle.target}
     permissions:
       - service_principal_name: ${var.prod_deployer_service_principal_name}
         level: CAN_MANAGE

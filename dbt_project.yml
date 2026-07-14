@@ -2,8 +2,9 @@ name: 'bricks_cli_dbt'
 version: '1.0.0'
 config-version: 2
 
-# This project runs in a regulated environment: dbt must not send anonymous
-# usage events outside Databricks.
+# This reference keeps dbt anonymous usage events disabled so a regulated
+# adopter can start from a no-external-telemetry posture. The tested Free
+# Edition workspace is not itself a regulated production environment.
 flags:
   send_anonymous_usage_stats: false
 

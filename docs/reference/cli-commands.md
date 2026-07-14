@@ -4,93 +4,119 @@ icon: lucide/terminal
 
 # CLI commands
 
-Source of truth: [github.com/databricks/cli](https://github.com/databricks/cli).
-Examples assume **Databricks CLI v1.7.0**.
+This page lists the command contracts used by the repository. Production CI
+installs Databricks CLI `1.7.0`; local commands should use the same validated
+version. See the official [Databricks CLI commands](https://docs.databricks.com/aws/en/dev-tools/cli/commands).
 
-## Command groups used here
+## Authentication and identity
 
-`databricks --help` groups commands by area. The ones this demo touches:
+```text
+databricks auth login --host <workspace-url> --profile <profile>
+databricks auth token <profile> --output json
+databricks auth describe --profile <profile>
+databricks current-user me --profile <profile>
+```
 
-| Group | Example | Used for |
-|-------|---------|----------|
-| `bundle` | `databricks bundle deploy` | Deploy this project (the headline) |
-| `current-user` | `databricks current-user me` | Confirm who you're authenticated as |
-| `warehouses` | `databricks warehouses list` | Find the SQL warehouse ID for dbt |
-| `catalogs` | `databricks catalogs list` | Pick the Unity Catalog target |
-| `jobs` | `databricks jobs list-runs --job-id <id>` | Inspect completed source runs used for reconciliation |
-| `fs` | `databricks fs ls dbfs:/Volumes/...` | Inspect an approved managed Volume path |
-| `api` | `databricks api post /api/2.0/sql/statements` | Ad-hoc REST calls (e.g. query a table) |
+| Command | Output |
+|---------|--------|
+| `auth login` | Creates or refreshes a local OAuth U2M profile through browser sign-in |
+| `auth token` | Emits a short-lived access token from an OAuth U2M profile; it is not an M2M-secret command |
+| `auth describe` | Shows which unified-authentication fields and method were resolved |
+| `current-user me` | Returns the workspace identity accepted by the API |
 
-## `databricks bundle` subcommands
+`--profile` can be replaced by `DATABRICKS_CONFIG_PROFILE`. Environment
+variables take precedence when they provide a complete authentication method.
+See [Authentication support](authentication-support.md) and the official
+[unified authentication documentation](https://docs.databricks.com/aws/en/dev-tools/auth/).
 
-`databricks bundle --help` lists the subcommands that power this repo:
+## Bundle commands
 
-| Subcommand | Purpose |
-|------------|---------|
-| `validate` | Resolve and type-check the bundle config for a target |
-| `plan` | Preview what a deploy would change |
-| `deploy` | Upload files and create/update resources (direct deployment) |
-| `run` | Run a job/pipeline defined in the bundle |
-| `summary` | Show what's deployed |
-| `destroy` | Tear down deployed resources |
-| `init` | Scaffold a new bundle from a template (e.g. `dbt-sql`) |
-| `generate` | Import an existing job/pipeline into bundle YAML |
+```text
+databricks bundle validate --target dev
+databricks bundle plan     --target dev
+databricks bundle deploy   --target dev
+databricks bundle summary  --target dev --output json
+databricks bundle run <resource-key> --target dev
+databricks bundle destroy  --target dev
+databricks jobs run-now <job-id> --timeout <duration> --output json
+```
 
-A typical local cycle (the `-p bricks-demo` profile carries your host and
-`azure-cli` auth — see [Connect to Databricks](../tutorials/connect-to-databricks.md)):
+| Command | Behavior in this repository |
+|---------|-----------------------------|
+| `validate` | Resolves variables, target overrides, identities, resources, and workspace capabilities |
+| `plan` | Shows proposed additions, changes, and deletions without applying them |
+| `deploy` | Uploads the project and creates or updates bundle-managed workspace resources |
+| `summary` | Returns deployed resource IDs and `workspace.file_path`; CI uses its JSON output for directory ACLs |
+| `run nyc_taxi_dbt_job` | Runs the source dbt job and waits for its terminal result |
+| `run dbt_observability_collector_job` | Runs one collector sweep and waits for its terminal result |
+| `destroy` | Removes a development deployment; production evidence resources have `prevent_destroy` |
+| `jobs run-now` | Starts an already-deployed job and returns terminal run metadata; callers must inspect `state.result_state` |
+
+The target name selects bundle settings. It does not select a dbt profile
+target. See [Bundle configuration](bundle-config.md).
+
+The protected production workflow invokes `bundle validate`, `bundle deploy`,
+and `bundle summary` as the M2M deployer, then invokes both deployed jobs with
+`jobs run-now`. Human U2M profiles are for read-only production inspection, not
+production deployment or job acceptance. Production destruction is a separate,
+reviewed one-time procedure; it is intentionally absent from this everyday
+command list.
+
+## Local dbt commands
+
+```text
+dbt parse --no-partial-parse --profiles-dir dbt_profiles --target dev
+dbt list --profiles-dir dbt_profiles --target dev --output name
+dbt build --profiles-dir dbt_profiles --target dev
+dbt clean
+```
+
+| Command | Workspace connection |
+|---------|----------------------|
+| `parse` | None when connection-shaped profile variables are present |
+| `list` | None for the selectors used by CI |
+| `build` | Required; loads the seed, builds the model, and runs tests |
+| `clean` | None; deletes local `target/` and `dbt_packages/` |
+
+The deployed dbt task does not use `dbt_profiles/profiles.yml`; Databricks
+generates its connection profile from the job resource. See
+[dbt project](dbt-project.md).
+
+## Repository quality commands
 
 ```bash
-databricks bundle validate -t dev -p bricks-demo   # resolve + type-check
-databricks bundle plan     -t dev -p bricks-demo   # preview changes + resolve resource references
-databricks bundle deploy   -t dev -p bricks-demo   # upload files + create/update resources
-databricks bundle run nyc_taxi_dbt_job -t dev -p bricks-demo   # run the job now
-databricks bundle summary  -t dev -p bricks-demo   # what's deployed?
-databricks bundle destroy  -t dev -p bricks-demo   # tear it down
+ruff check .
+ruff format --check .
+ty check
+pytest
+zensical build --clean --strict
 ```
 
-## dbt commands (run by the job and locally)
+The first four commands match pull-request CI. The Zensical command matches the
+documentation build.
 
-| Command | Purpose |
-|---------|---------|
-| `dbt seed` | Load selected seed CSV files during local, focused development |
-| `dbt run` | Build selected models during local, focused development |
-| `dbt test` | Run selected data tests during local, focused development |
-| `dbt build` | Run selected seeds, models, and tests in DAG order; the deployed job uses this |
-| `dbt init` | Create a local profile from `profile_template.yml` |
+## Output and failures
 
-!!! note "`--target` is different from `--target-path`"
-    Local runs use `--profiles-dir dbt_profiles --target dev`. The **deployed
-    job omits connection selector `--target`** because Databricks generates the
-    profile from the dbt task's `warehouse_id` / `catalog` / `schema`. It does
-    use `--target-path /Volumes/...` to stage JSON artifacts for the collector;
-    that flag changes artifact location, not the connection. See
-    [How dbt connects to Databricks](../explanation/how-dbt-connects.md).
+- Databricks commands accept `--output json` where structured output is needed.
+- Bundle commands accept `--profile`/`-p` and `--target`/`-t`.
+- A command-level or remote-operation error produces a non-zero exit status.
+- `bundle run` also fails when the invoked Lakeflow job finishes unsuccessfully.
+- CLI `1.7.0` `jobs run-now` can exit zero after terminal lifecycle even when
+  `state.result_state` is not `SUCCESS`; production automation asserts both
+  fields explicitly.
+- The collector intentionally fails a sweep when any selected attempt fails or
+  when work is deferred beyond the batch limit.
 
-## Global flags worth knowing
+## Example
 
-| Flag | Effect |
-|------|--------|
-| `-t`, `--target` | Select a bundle target (`dev`, `prod`) |
-| `-p`, `--profile` | Select a `~/.databrickscfg` profile |
-| `-o json` | Machine-readable output |
-| `--debug` | Print the underlying API calls |
+```bash
+export DATABRICKS_CONFIG_PROFILE="bricks-demo"
+export BUNDLE_VAR_warehouse_id="<warehouse-id>"
+export BUNDLE_VAR_catalog="<catalog>"
+export BUNDLE_VAR_schema="dbt_nyc_taxi_dev"
 
-## Installing in CI
-
-Use the first-party action, pinned for reproducibility:
-
-```yaml
-- uses: databricks/setup-cli@v1.7.0
-  with:
-    version: 1.7.0
+databricks bundle validate --target dev
+databricks bundle deploy --target dev
+databricks bundle run nyc_taxi_dbt_job --target dev
+databricks bundle run dbt_observability_collector_job --target dev
 ```
-
-!!! info "Stability"
-    The CLI follows **Semantic Versioning**; commands and flags are stable within
-    a major version. Features marked *Beta* / *Private Preview* or under
-    `databricks experimental` may change in a minor release — pinning an exact
-    version keeps deployments reproducible.
-
-The serverless job also pins its Python dependencies exactly:
-`dbt-core==1.11.11`, `dbt-databricks==1.12.2`, and
-`databricks-sdk==0.117.0`.

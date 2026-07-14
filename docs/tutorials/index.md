@@ -2,68 +2,68 @@
 icon: lucide/graduation-cap
 ---
 
-# Tutorial - User Guide
+# Tutorial: deploy and observe a dbt job
 
-This tutorial shows you how to use **bricks-cli** to deploy a dbt project to
-Azure Databricks, **step by step**.
+In this tutorial, we will deploy the repository's dbt Core project to a
+Databricks Free Edition workspace on AWS. We will run the dbt source job, run
+its independent artifact collector, and confirm that Databricks contains both
+the model output and a sanitized health record.
 
-Each section builds gently on the previous ones, but they're grouped around
-single topics, so you can jump straight to whatever you need.
-
-By the end you will have:
-
-- the latest **Databricks CLI** installed and talking to a workspace,
-- a tiny dbt project (**one seed → one table**) deployed as a
-  **Declarative Automation Bundle**, and
-- a source job that stages dbt JSON artifacts with `--target-path`, plus an
-  independent 15-minute collector that captures and reconciles completed task
-  attempts in Unity Catalog.
-
-No Terraform required.
-
-## Run the code
-
-Every code example is something you can copy and run yourself. In fact, that's
-the best way to learn this: type it out, run it, and watch what happens.
-
-!!! tip
-    Having the project open in one window and this tutorial in another makes it
-    much easier to follow along.
-
-## What you'll need
-
-Before you start, make sure you have:
-
-- [x] A **terminal** (macOS, Linux, or WSL on Windows).
-- [x] **Python 3.10+** — used only to run dbt locally and, optionally, to build
-      these docs.
-- [x] Access to an **Azure Databricks workspace** with a **SQL warehouse** and a
-      **Unity Catalog** catalog you can write to.
-- [x] The **Azure CLI** (`az`) signed in to the subscription that owns the
-      workspace. This tutorial uses it for password-free authentication.
-
-!!! info "You don't need to memorize anything"
-    If a term is new — *bundle*, *target*, *serverless* — keep going. Each one is
-    introduced where you first meet it, and the
-    [Explanation](../explanation/index.md) section has the deeper "why" once
-    you're curious.
-
-## The shape of the journey
+The completed path looks like this:
 
 ```mermaid
 flowchart LR
-    a["1 · Install<br/>the CLI"] --> b["2 · Connect<br/>to Databricks"]
-    b --> c["3 · Explore<br/>the dbt project"]
-    c --> d["4 · Deploy<br/>and run the job"]
+    cli["Databricks CLI"] --> bundle["Development bundle"]
+    bundle --> source["dbt source job"]
+    source --> table["NYC taxi table"]
+    source --> staging["dbt artifact staging"]
+    staging --> collector["Independent collector"]
+    collector --> health["Sanitized health view"]
 ```
 
-1. [**Install the Databricks CLI**](install-the-cli.md) — get the single binary
-   that drives everything.
-2. [**Connect to Databricks**](connect-to-databricks.md) — authenticate with your
-   Azure CLI session.
-3. [**Explore the dbt project**](explore-the-project.md) — see how a seed becomes
-   a table before you deploy anything.
-4. [**Deploy and run the job**](deploy-and-run.md) — ship the bundle and watch
-   the job build your table.
+By the end, you will have:
 
-Ready? Let's [install the CLI](install-the-cli.md).
+- authenticated the CLI with browser-based OAuth user-to-machine (U2M),
+- deployed two paused development jobs and governed Unity Catalog storage,
+- built one seed, one model, and its data tests with dbt Core,
+- captured `manifest.json` and `run_results.json` without an external telemetry
+  platform, and
+- removed every tutorial object again.
+
+## What you need
+
+This tutorial follows one tested path. Start with:
+
+- macOS with [Homebrew](https://brew.sh/) and Git installed;
+- an AWS Databricks Free Edition workspace;
+- a SQL warehouse;
+- a Unity Catalog catalog where your user can create a schema and managed
+  Volumes; and
+- permission to create and run workspace jobs.
+
+!!! warning "Free Edition is a learning environment"
+    Free Edition has no compliance enforcement, security customization,
+    private networking, support guarantee, or SLA. Use it to learn and validate
+    this reference implementation, not as a regulated production environment.
+    Use only the repository's public demonstration dataset—never Personal Data,
+    confidential, proprietary, or regulated data. Databricks states that Free
+    Edition is for exploratory datasets and reserves the right to train on
+    uploaded data.
+    See the official
+    [Free Edition comparison](https://docs.databricks.com/aws/en/getting-started/free-trial-vs-free-edition).
+
+## The journey
+
+Follow these pages in order:
+
+1. [Install the Databricks CLI](install-the-cli.md).
+2. [Connect to Databricks](connect-to-databricks.md).
+3. [Explore the dbt project](explore-the-project.md).
+4. [Deploy and run the source job](deploy-and-run.md).
+5. [Observe your first run](observe-your-first-run.md).
+6. [Clean up the tutorial](clean-up-the-tutorial.md).
+
+We will use the same terminal, profile, catalog, warehouse, and bundle-variable
+values throughout. Keep the terminal open so the exported values remain set.
+
+[:lucide-arrow-right: Install the Databricks CLI](install-the-cli.md){ .md-button .md-button--primary }

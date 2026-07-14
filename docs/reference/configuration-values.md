@@ -4,130 +4,114 @@ icon: lucide/sliders-horizontal
 
 # Configuration values
 
-Every workspace-specific value lives **outside** the repo. This page is the
-complete contract: what each value is, and where you supply it.
+This page is the complete input contract for bundle deployment, local dbt, and
+GitHub Actions. Secret values are never committed.
 
-You provide these at run time through environment variables (locally) and GitHub
-Variables (in CI). For the design rationale, see
-[Keeping secrets out of git](../explanation/security-and-secrets.md).
+## Bundle variables
 
-## Bundle variables (deploy time)
+Supply scalar values as `BUNDLE_VAR_<name>`. Variables with no default are
+required and make bundle validation fail when they are not supplied.
 
-Defined in `databricks.yml`; supplied as `BUNDLE_VAR_<name>`:
+| Name | Type | Default | Production requirement | Sensitive | Effect |
+|------|------|---------|------------------------|-----------|--------|
+| `warehouse_id` | string | none | required | workspace-specific | SQL warehouse used by the dbt task |
+| `catalog` | string | none | required | workspace-specific | Parent catalog for dbt and observability objects |
+| `schema` | string | `dbt_nyc_taxi` | optional override | no | Seed/model target schema |
+| `observability_schema` | string | `dbt_observability` | optional override | no | Base name; `_<bundle.target>` is appended |
+| `observability_staging_volume` | string | `dbt_artifacts_staging` | optional override | no | Producer-writable staging Volume |
+| `observability_volume` | string | `dbt_artifacts` | optional override | no | Collector-only evidence Volume |
+| `job_duration_warning_seconds` | number | `900` | optional override | no | Source-job duration health threshold |
+| `notification_emails` | array | `[]` | optional reviewed override | Personal Data if populated | Native email recipients; empty means no outbound email |
+| `prod_deployer_service_principal_name` | string | none | required | workspace-specific | Production deployer Application ID |
+| `prod_run_as_service_principal_name` | string | none | required | workspace-specific | Source runner Application ID |
+| `prod_collector_service_principal_name` | string | none | required | workspace-specific | Collector Application ID |
 
-| Bundle variable | Default | Meaning |
-|-----------------|---------|---------|
-| `warehouse_id` | `REPLACE_WITH_YOUR_WAREHOUSE_ID` | SQL warehouse used by dbt |
-| `catalog` | `REPLACE_WITH_YOUR_CATALOG` | Catalog for dbt and observability objects |
-| `schema` | `dbt_nyc_taxi` | dbt seed/model target schema |
-| `observability_schema` | `dbt_observability` | Base schema; the target suffix and any development-mode resource prefix are applied |
-| `observability_staging_volume` | `dbt_artifacts_staging` | Managed Volume for short-lived per-attempt dbt target output |
-| `observability_volume` | `dbt_artifacts` | Collector-only managed Volume for content-addressed canonical archives |
-| `job_duration_warning_seconds` | `900` | Native `RUN_DURATION_SECONDS` threshold |
-| `notification_emails` | `[]` | Approved internal recipients; complex array |
-| `prod_deployer_service_principal_name` | required for `prod` | Application ID of the production deployment identity used in the job ACL |
-| `prod_run_as_service_principal_name` | required for `prod` | Application ID of the dedicated production dbt-runner identity |
-| `prod_collector_service_principal_name` | required for `prod` | Application ID of the dedicated production collector identity |
+The production workflow reads `notification_emails` from the optional
+`DATABRICKS_NOTIFICATION_EMAILS` repository Variable and falls back to `[]`.
+It validates the JSON array and writes it to the ignored target
+`variable-overrides.json`; complex values are not accepted through
+`BUNDLE_VAR_*`. Store a JSON array such as
+`["approved-data-operations@example.com"]`; leave the Variable absent or set it
+to `[]` when outbound email is prohibited.
 
-```bash
-export BUNDLE_VAR_warehouse_id="<your-warehouse-id>"
-export BUNDLE_VAR_catalog="<your-catalog>"
-export BUNDLE_VAR_schema="dbt_nyc_taxi_dev"
-export BUNDLE_VAR_observability_schema="dbt_observability"
-export BUNDLE_VAR_observability_staging_volume="dbt_artifacts_staging"
-export BUNDLE_VAR_observability_volume="dbt_artifacts"
-export BUNDLE_VAR_job_duration_warning_seconds="900"
-export BUNDLE_VAR_prod_deployer_service_principal_name="<deployment-service-principal-application-id>" # prod only
-export BUNDLE_VAR_prod_run_as_service_principal_name="<dbt-service-principal-application-id>" # prod only
-export BUNDLE_VAR_prod_collector_service_principal_name="<collector-service-principal-application-id>" # prod only
-```
+## Databricks CLI authentication
 
-`notification_emails` is complex. For local deployment, use the ignored
-`.databricks/bundle/<target>/variable-overrides.json` file:
+| Name | Local human | Production GitHub | Sensitive |
+|------|-------------|-------------------|-----------|
+| `DATABRICKS_HOST` | profile or environment | repository Variable | workspace-specific |
+| `DATABRICKS_AUTH_TYPE` | inferred by profile; OAuth U2M recommended | committed `oauth-m2m` | no |
+| `DATABRICKS_CONFIG_PROFILE` | optional profile selector | unused | no |
+| `DATABRICKS_CLIENT_ID` | unused for U2M | repository Variable | no; identifier only |
+| `DATABRICKS_CLIENT_SECRET` | unused for U2M | protected `prod` environment Secret | **yes** |
 
-```json
-{
-  "notification_emails": []
-}
-```
+Production uses workspace-level OAuth M2M. `DATABRICKS_ACCOUNT_ID` is not
+required for workspace operations. See [Authentication support](authentication-support.md)
+and the official [OAuth M2M documentation](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m).
 
-Keep it empty when outbound email is prohibited. If enabled, use only an
-approved internal distribution list, never a personal address. The existing CI
-workflows use the committed empty default; adding notification recipients to CI
-requires an explicit, reviewed complex-variable mapping.
+## Local dbt environment
 
-## CLI authentication
+`dbt_profiles/profiles.yml` reads these values for local `dev` and `prod`
+targets. The deployed dbt task does not read this profile.
 
-| Value | Where | Notes |
-|-------|-------|-------|
-| `DATABRICKS_HOST` | env var or profile | Workspace URL, e.g. `https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net` |
-| `DATABRICKS_AUTH_TYPE` | env var or profile | `azure-cli` locally; `github-oidc` in CI |
-| `DATABRICKS_CLIENT_ID` | GitHub Variable | Service principal **Application ID** (UUID); not a secret |
-| `DATABRICKS_CONFIG_PROFILE` | env var | Alternative to `-p/--profile` |
+| Name | Required | Default | Format |
+|------|----------|---------|--------|
+| `DBT_HOST` | yes | none | Hostname without `https://` |
+| `DBT_HTTP_PATH` | yes | none | `/sql/1.0/warehouses/<warehouse-id>` |
+| `DBT_CATALOG` | yes | none | Unity Catalog catalog name |
+| `DBT_SCHEMA` | no | `dbt_nyc_taxi` | Target schema name |
+| `DBT_ACCESS_TOKEN` | yes | none | Short-lived token accepted by the SQL warehouse |
 
-Locally, a `~/.databrickscfg` profile is the convenient option:
+The profile uses `method: http` and `threads: 4` for both targets.
 
-```ini
-[bricks-demo]
-host      = https://adb-XXXXXXXXXXXX.NN.azuredatabricks.net
-auth_type = azure-cli
-```
+## GitHub repository Variables
 
-## Local dbt environment variables
+Set these under **Settings → Secrets and variables → Actions → Variables**.
 
-Read by `dbt_profiles/profiles.yml` for **local** runs only (the deployed job
-does not use this file):
-
-| Env var | Meaning | Example |
-|---------|---------|---------|
-| `DBT_HOST` | Workspace host (no scheme) | `adb-XXXXXXXXXXXX.NN.azuredatabricks.net` |
-| `DBT_HTTP_PATH` | SQL warehouse HTTP path | `/sql/1.0/warehouses/<id>` |
-| `DBT_CATALOG` | Unity Catalog catalog | `<your-catalog>` |
-| `DBT_SCHEMA` | Target schema (default `dbt_nyc_taxi`) | `dbt_nyc_taxi` |
-| `DBT_ACCESS_TOKEN` | Short-lived token | from `az account get-access-token …` |
-
-!!! tip "Where `DBT_ACCESS_TOKEN` comes from"
-    Mint a short-lived token with the Azure CLI rather than a PAT — the one-liner
-    is in [Run dbt locally](../how-to/run-dbt-locally.md).
-
-## GitHub repository Variables (CI)
-
-Set under **Settings → Secrets and variables → Actions → Variables**:
-
-| Variable | Fills |
-|----------|-------|
-| `DATABRICKS_HOST` | CLI host |
-| `DATABRICKS_CLIENT_ID` | OIDC deployment service principal (UUID); also fills the prod deployer ACL variable |
+| Variable | Workflow mapping |
+|----------|------------------|
+| `DATABRICKS_HOST` | `DATABRICKS_HOST` |
+| `DATABRICKS_CLIENT_ID` | M2M client ID and production deployer bundle variable |
 | `DATABRICKS_WAREHOUSE_ID` | `BUNDLE_VAR_warehouse_id` |
 | `DATABRICKS_CATALOG` | `BUNDLE_VAR_catalog` |
 | `DATABRICKS_SCHEMA` | `BUNDLE_VAR_schema` |
-| `DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME` | required production dbt-runner identity |
-| `DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME` | required production collector identity |
+| `DATABRICKS_NOTIFICATION_EMAILS` | Optional JSON array written to the ignored production target override; default `[]` |
+| `DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME` | Production source runner bundle variable |
+| `DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME` | Production collector bundle variable |
 
-Plus **Environments** named `dev` and `prod`. Setup:
-[Set up secretless CI/CD with OIDC](../how-to/set-up-oidc-cicd.md).
+## GitHub environment Secret
 
-!!! note "`schema` has a committed default"
-    Unlike `warehouse_id` and `catalog`, the `schema` variable has a real default
-    — `dbt_nyc_taxi` — committed in `databricks.yml`. A schema *name* isn't
-    sensitive, and it gives the project a safe place to build. Override it any
-    time with `BUNDLE_VAR_schema`. In CI, both workflows always pass
-    `BUNDLE_VAR_schema` from `vars.DATABRICKS_SCHEMA`, so set that Variable — an
-    unset Variable passes an empty string and overrides the default.
+The protected `prod` environment contains exactly the deployment credential:
 
-## Fixed runtime and privacy settings
+| Secret | Consumer | Rotation requirement |
+|--------|----------|----------------------|
+| `DATABRICKS_CLIENT_SECRET` | `.github/workflows/deploy.yml` | Replace before its Databricks OAuth-secret expiry, validate a deployment, then revoke the old secret |
 
-These values are committed rather than supplied at deployment time:
+PR CI and the documentation workflow receive no Databricks credential.
 
-| Setting | Value |
-|---------|-------|
-| dbt Core | `1.11.11` |
-| `dbt-databricks` | `1.12.2` |
-| Databricks SDK for Python | `0.117.0` |
-| dbt anonymous usage statistics | disabled in `dbt_project.yml` |
+## Collector task parameters
 
-The source writes dbt JSON artifacts to the staging Volume with `--target-path`.
-The collector reads `manifest.json` and `run_results.json`, creates a
-deterministic two-file tar in the evidence Volume, and exposes only allowlisted
-operational fields through curated views. Capture cleanup removes reconciled
-staging leaves; it does not delete durable evidence.
+These are committed notebook `base_parameters`, not operator-supplied runtime
+secrets.
+
+| Parameter | Value | Validation |
+|-----------|-------|------------|
+| `source_job_id` | `${resources.jobs.nyc_taxi_dbt_job.id}` | positive integer |
+| `source_task_key` | `dbt_nyc_taxi` | `[A-Za-z0-9_-]+`, at most 128 characters |
+| `lookback_days` | `59` | integer from 1 through 59 |
+| `max_task_runs_per_sweep` | `100` | integer from 1 through 100 |
+| `observability_catalog` | `${var.catalog}` | `[A-Za-z0-9_-]+` |
+| `observability_schema` | resolved schema resource name | `[A-Za-z0-9_-]+` |
+| `observability_volume` | resolved evidence Volume name | `[A-Za-z0-9_-]+` |
+| `observability_staging_volume` | resolved staging Volume name | `[A-Za-z0-9_-]+` |
+
+`workspace_id` is deliberately not configurable. The collector obtains it from
+the authenticated Workspace API.
+
+## Example
+
+```bash
+export DATABRICKS_CONFIG_PROFILE="bricks-demo"
+export BUNDLE_VAR_warehouse_id="<warehouse-id>"
+export BUNDLE_VAR_catalog="<catalog>"
+export BUNDLE_VAR_schema="dbt_nyc_taxi_dev"
+```
