@@ -6,7 +6,7 @@ icon: lucide/trash-2
 
 We will remove the collector-created Delta objects first, then let the bundle
 remove its development jobs, schema, and Volumes. Finally, we will remove the
-two dbt relations from the dedicated tutorial schema.
+five dbt relations from the dedicated tutorial schema.
 
 !!! danger "Development tutorial only"
     Use these steps only for the `dev` target and the dedicated
@@ -75,16 +75,19 @@ collector job, observability schema, and both managed Volumes are now gone.
 
 ## Remove the tutorial data
 
-In the SQL editor, remove only the two known dbt relations and their dedicated
+In the SQL editor, remove only the five known dbt relations and their dedicated
 schema:
 
 ```sql
+DROP VIEW IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`weather_daily_observations`;
+DROP TABLE IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`weather_station_summary`;
+DROP TABLE IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`weather_daily_seed`;
 DROP TABLE IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`nyc_taxi_trips`;
 DROP TABLE IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`nyc_taxi_trips_seed`;
 DROP SCHEMA IF EXISTS `<your-catalog>`.`dbt_nyc_taxi_tutorial`;
 ```
 
-All three statements should succeed. Do not add `CASCADE`: an unexpected object
+All six statements should succeed. Do not add `CASCADE`: an unexpected object
 should stop cleanup rather than be deleted silently.
 
 The tutorial is now fully reversed. The local `bricks-demo` OAuth profile and

@@ -5,7 +5,7 @@ icon: lucide/git-branch
 # Change the deployed dbt selection
 
 Use this guide to make the deployed source job build `long_trips` and all of its
-ancestors instead of stopping at `nyc_taxi_trips`.
+ancestors while preserving the weather graph.
 
 ## Prerequisites
 
@@ -18,18 +18,19 @@ ancestors instead of stopping at `nyc_taxi_trips`.
 
 ## Preview the selector
 
-Ask dbt what `+long_trips` selects before changing the job:
+Ask dbt what the combined selector selects before changing the job:
 
 ```bash
 dbt list \
-  --select "+long_trips" \
+  --select "+long_trips +weather_station_summary" \
   --profiles-dir dbt_profiles \
   --target dev \
   --output name
 ```
 
 The output should include `nyc_taxi_trips_seed`, `nyc_taxi_trips`,
-`long_trips`, and their selected tests. The leading `+` selects ancestors; see
+`long_trips`, both weather models, both seeds, and their selected tests. A
+leading `+` selects ancestors; see
 the official [node-selection syntax](https://docs.getdbt.com/reference/node-selection/syntax).
 
 ## Change the job command
@@ -37,13 +38,13 @@ the official [node-selection syntax](https://docs.getdbt.com/reference/node-sele
 Open `resources/nyc_taxi.job.yml` and find the dbt command's selector:
 
 ```yaml
---select +nyc_taxi_trips
+--select +nyc_taxi_trips +weather_station_summary
 ```
 
 Replace only that selector with:
 
 ```yaml
---select +long_trips
+--select +long_trips +weather_station_summary
 ```
 
 Review the change:

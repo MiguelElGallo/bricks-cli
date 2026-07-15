@@ -4,8 +4,8 @@ icon: lucide/blocks
 
 # dbt project
 
-`dbt_project.yml` defines one self-contained dbt Core project: a committed
-101-row seed, one Delta-table model, and two column tests.
+`dbt_project.yml` defines one self-contained dbt Core project with two committed
+demo seeds, three models at distinct grains, and ten data tests.
 
 ## Project contract
 
@@ -42,12 +42,20 @@ seed.bricks_cli_dbt.nyc_taxi_trips_seed
   → model.bricks_cli_dbt.nyc_taxi_trips
     → not_null(nyc_taxi_trips.pickup_at)
     → not_null(nyc_taxi_trips.dropoff_at)
+
+seed.bricks_cli_dbt.weather_daily_seed
+  ├─→ two seed not-null tests
+  └─→ model.bricks_cli_dbt.weather_daily_observations
+      ├─→ observation-key and range tests
+      └─→ model.bricks_cli_dbt.weather_station_summary
+          └─→ station-key and reconciliation tests
 ```
 
-The source job selects `+nyc_taxi_trips`, so one `dbt build` includes the
-upstream seed, the model, and attached tests.
+The source job selects both `+nyc_taxi_trips` and
+`+weather_station_summary`, so one `dbt build` includes both complete ancestor
+graphs and their attached tests.
 
-## Seed
+## Seeds
 
 `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` contains 101 rows with six
 columns. `dbt_project.yml` fixes their load types:
@@ -61,7 +69,12 @@ columns. `dbt_project.yml` fixes their load types:
 | `pickup_zip` | `int` |
 | `dropoff_zip` | `int` |
 
-## Model output
+`src/seeds/weather/weather_daily_seed.csv` contains eight explicitly synthetic
+rows for two demo stations. Its configured types are `STRING` identifiers and
+names, a `DATE` observation key, and `DOUBLE` weather measures. The values are
+invented for deterministic testing and are not meteorological records.
+
+## Model outputs
 
 `src/models/nyc_taxi/nyc_taxi_trips.sql` materializes a table with:
 
@@ -77,6 +90,12 @@ columns. `dbt_project.yml` fixes their load types:
 
 `pickup_at` and `dropoff_at` have `not_null` tests. The model configuration is
 `table` both at directory scope and explicitly in the model.
+
+`weather_daily_observations` is a view at one row per station and date. It adds
+a stable observation key, mean temperature, temperature range, and wet-day
+flag. `weather_station_summary` is a Delta table at one row per station with
+period dates, counts, temperature extrema, precipitation, and wet-day totals.
+Key tests plus singular range and reconciliation tests protect both grains.
 
 ## Connection paths
 

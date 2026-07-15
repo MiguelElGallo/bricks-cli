@@ -28,3 +28,11 @@ def test_source_notifies_only_after_its_final_attempt() -> None:
 
     assert task["max_retries"] == 1
     assert task["notification_settings"]["alert_on_last_attempt"] is True
+
+
+def test_source_builds_both_demo_topics_in_one_dbt_invocation() -> None:
+    job = _job("resources/nyc_taxi.job.yml", "nyc_taxi_dbt_job")
+    commands = job["tasks"][0]["dbt_task"]["commands"]
+
+    assert len(commands) == 1
+    assert "--select +nyc_taxi_trips +weather_station_summary" in commands[0]

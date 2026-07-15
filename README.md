@@ -1,9 +1,10 @@
 # bricks-cli
 
 Deploy a small dbt Core project and observe every task attempt using only
-Databricks-native controls. The repository contains one seed, one Delta table,
-two serverless Lakeflow Jobs, governed artifact evidence, sanitized health
-views, and a protected GitHub deployment workflow.
+Databricks-native controls. The repository contains two deterministic seeds,
+three dbt models, ten data tests, two serverless Lakeflow Jobs, governed
+artifact evidence, sanitized health views, and a protected GitHub deployment
+workflow.
 
 The live reference deployment is validated on an **AWS Databricks Free Edition**
 workspace with Databricks CLI `1.7.0`, dbt Core `1.11.11`, and
@@ -78,7 +79,7 @@ databricks.yml                         bundle targets, variables, and grants
 resources/nyc_taxi.job.yml             source dbt job
 resources/dbt_observability_collector.job.yml
 resources/observability.infrastructure.yml
-src/models/ and src/seeds/             one seed-to-table dbt graph
+src/models/, src/seeds/, and src/tests/ two small deterministic dbt graphs
 src/observability/                      collector and artifact parser
 tests/                                  isolated collector and policy tests
 .github/workflows/                      credential-free CI, protected deploy, Pages

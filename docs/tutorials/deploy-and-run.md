@@ -99,7 +99,7 @@ databricks bundle run nyc_taxi_dbt_job \
 The command should finish with a successful run URL. In the workspace, the
 `dbt_nyc_taxi` task should be `TERMINATED` with result `SUCCESS`.
 
-That result belongs only to dbt: the seed loaded, the table materialized, and
-the two data tests passed. Artifact capture is the next, separate result.
+That result belongs only to dbt: both seeds loaded, three models materialized,
+and ten data tests passed. Artifact capture is the next, separate result.
 
 [:lucide-arrow-right: Observe your first run](observe-your-first-run.md){ .md-button .md-button--primary }

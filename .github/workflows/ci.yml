@@ -59,4 +59,13 @@ jobs:
           DBT_ACCESS_TOKEN: ci-placeholder
         run: |
           dbt parse --no-partial-parse --profiles-dir dbt_profiles --target dev
-          dbt list --profiles-dir dbt_profiles --target dev --output name
+          selected="$({
+            dbt list \
+              --select +nyc_taxi_trips +weather_station_summary \
+              --profiles-dir dbt_profiles \
+              --target dev \
+              --output name \
+              --quiet
+          })"
+          test "$(wc -l <<< "$selected" | tr -d ' ')" -eq 15
+          printf '%s\n' "$selected"

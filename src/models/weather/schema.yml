@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: weather_daily_observations
+    description: >
+      Typed and derived synthetic weather observations. One row per station and
+      observation date.
+    columns:
+      - name: weather_observation_key
+        description: "Synthetic station and observation-date key."
+        data_tests:
+          - not_null
+          - unique
+      - name: station_id
+        description: "Stable identifier for a synthetic demo station."
+      - name: station_name
+        description: "Human-readable name for a synthetic demo station."
+      - name: observation_date
+        description: "Synthetic observation date."
+      - name: min_temp_c
+        description: "Daily minimum temperature in degrees Celsius."
+      - name: max_temp_c
+        description: "Daily maximum temperature in degrees Celsius."
+      - name: mean_temp_c
+        description: "Arithmetic mean of the daily minimum and maximum."
+      - name: temperature_range_c
+        description: "Difference between the daily maximum and minimum."
+      - name: precipitation_mm
+        description: "Synthetic daily precipitation in millimetres."
+      - name: is_wet_day
+        description: "True when synthetic precipitation is greater than zero."
+
+  - name: weather_station_summary
+    description: >
+      Aggregate synthetic weather measures. One row per station across the
+      committed observation period.
+    columns:
+      - name: station_id
+        description: "Stable identifier and grain key for a synthetic station."
+        data_tests:
+          - not_null
+          - unique
+      - name: station_name
+        description: "Human-readable name for a synthetic demo station."
+      - name: first_observation_date
+        description: "First synthetic date included for the station."
+      - name: last_observation_date
+        description: "Last synthetic date included for the station."
+      - name: observation_days
+        description: "Number of daily observations included."
+      - name: average_mean_temp_c
+        description: "Average daily mean temperature in degrees Celsius."
+      - name: period_min_temp_c
+        description: "Lowest daily minimum in the observation period."
+      - name: period_max_temp_c
+        description: "Highest daily maximum in the observation period."
+      - name: total_precipitation_mm
+        description: "Total synthetic precipitation in the period."
+      - name: wet_days
+        description: "Number of days with precipitation greater than zero."
