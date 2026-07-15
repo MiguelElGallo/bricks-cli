@@ -204,7 +204,9 @@ FROM `<catalog>`.`<observability-schema>`.`dbt_run_health`
 ORDER BY generated_at DESC;
 ```
 
-For verified values from a real run, see the tutorial's
-[verified sanitized capture](../tutorials/observe-your-first-run.md#see-one-real-reference-capture).
+For verified values, see the tutorial's
+[first sanitized capture](../tutorials/observe-your-first-run.md#see-one-real-reference-capture)
+and the explanation of
+[four successive project states](../explanation/how-project-changes-appear-in-observability.md).
 
 See the official [Lakeflow Jobs system-table reference](https://docs.databricks.com/aws/en/admin/system-tables/jobs).

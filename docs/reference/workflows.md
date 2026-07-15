@@ -16,7 +16,7 @@ security-sensitive workflows.
 | File | Trigger | Databricks credential | Environment | Concurrency |
 |------|---------|------------------------|-------------|-------------|
 | `.github/workflows/ci.yml` | Pull request to `main` | none | none | `ci-${{ github.ref }}` |
-| `.github/workflows/deploy.yml` | Push to `main`; manual `deploy` or `freeze` | OAuth M2M secret | protected `prod` | `deploy-prod` |
+| `.github/workflows/deploy.yml` | Push to `main` unless all changed paths are ignored; manual `deploy` or `freeze` | OAuth M2M secret | protected `prod` | `deploy-prod` |
 | `.github/workflows/docs.yml` | Relevant push to `main`; manual | none | `github-pages` for deployment | `pages` |
 
 ## Pull-request CI
@@ -41,8 +41,11 @@ workspace-aware and would expose a reusable credential to pull-request code.
 
 ## Protected production operations
 
-Pushes to `main` always select `deploy`. A manual dispatch requires one explicit
-choice:
+Pushes to `main` select `deploy` unless every changed path matches the explicit
+documentation-only `paths-ignore` list. This prevents Pages-only publication
+from creating an unrelated dbt AttemptKey while other repository changes still
+fail safely through production validation. A manual dispatch requires one
+explicit choice:
 
 | Operation | Effect |
 |---|---|
@@ -66,18 +69,20 @@ protected prod approval
 → resolve deployed job IDs from bundle summary
 → jobs run-now: source
 → jobs run-now: collector sweep 1
-→ jobs run-now: collector sweep 2 (idempotency check)
+→ jobs run-now: collector sweep 2 (terminal-key rediscovery exercise)
 ```
 
 The workflow has `contents: read` only. The `prod` job environment is the
-credential release boundary; repository variables provide non-secret
-configuration, including the optional notification JSON array. The workflow
-validates that complex value and writes the ignored production target override
-before bundle validation. The protected environment provides only
-`DATABRICKS_CLIENT_SECRET`. On the deploy path, the workflow scopes it to
-validation, deployment, directory ACL reconciliation, and acceptance runs.
-Checkout, CLI installation, identity preflight, and notification preprocessing
-never receive it.
+release boundary for both classified workspace metadata and the OAuth
+credential. Checkout and CLI setup run before any step receives those values.
+Each later first-party step receives only its required, automatically masked
+environment Secrets; nothing exports classified metadata job-wide. The
+notification step validates and normalizes its JSON, registers masks for
+derived values, and writes the ignored production target override. A final
+`always()` step removes local protected bundle configuration before third-party
+post-job hooks run. `DATABRICKS_CLIENT_SECRET` remains narrower: on the deploy
+path, only validation, deployment, directory ACL reconciliation, and acceptance
+steps receive it; the freeze path exposes it only to the approved pause step.
 
 After deployment, the workflow obtains `workspace.file_path` from JSON bundle
 summary output, resolves its workspace object ID, and replaces the directory's
@@ -93,15 +98,23 @@ also removes obsolete runtime principals during a reviewed rotation.
 
 The smoke check waits for the source and both collector sweeps, then explicitly
 requires lifecycle `TERMINATED` and result `SUCCESS` for each. CLI lifecycle
-completion alone is not treated as success. The second collector sweep proves
-that a terminal AttemptKey can be rediscovered without creating duplicate
-registry or invocation facts. A source failure, either collector failure, or
-bundle error fails the workflow.
+completion alone is not treated as success. The second collector sweep
+exercises terminal-key rediscovery; the independent production-verification
+procedure proves normalized row uniqueness. A source failure, either collector
+failure, or bundle error fails the workflow.
 
-The workflow writes the source parent/task run IDs and both collector parent
-run IDs to the GitHub job summary and emits one stable `ACCEPTANCE_RUN_IDS` log
-line. Verification uses those exact IDs instead of assuming the newest
-Databricks run belongs to the deployment.
+Runs produced by this workflow revision pass workspace metadata from protected
+environment Secrets only to first-party steps and suppress raw workspace-aware
+CLI responses. Their public log and job
+summary report only that one source build and two collector sweeps succeeded;
+they do not print Databricks job or run IDs. Historical Actions audit records
+predating this revision may retain the older metadata summaries; changing this
+workflow is not retroactive.
+
+Independent verification resolves the exact four run IDs privately by matching
+the already identity-verified source and collector jobs, one-time trigger, and
+approved workflow time window. It rejects zero or multiple matches instead of
+assuming the newest Databricks run belongs to the deployment.
 
 ### Freeze operation
 

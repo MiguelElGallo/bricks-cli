@@ -63,37 +63,48 @@ GitHub environment secrets become available only after the protection rules
 pass. See
 [Deployment environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 
-## 3. Set repository variables
+## 3. Store protected production metadata
 
-Set the non-secret configuration:
+Load the approved values into the current shell through your internal
+secret-management process. Do not enable command tracing. Then store every
+workspace-specific value as a protected `prod` environment Secret so GitHub
+masks it before any workflow command runs:
 
 ```bash
-gh variable set DATABRICKS_HOST \
-  --body "https://dbc-<workspace-id>.cloud.databricks.com"
+set +x
+set -euo pipefail
+: "${DATABRICKS_HOST:?load the approved workspace host}"
+: "${DATABRICKS_CLIENT_ID:?load the deployer application ID}"
+: "${DATABRICKS_WAREHOUSE_ID:?load the approved warehouse ID}"
+: "${DATABRICKS_CATALOG:?load the production catalog}"
+: "${DATABRICKS_SCHEMA:?load the production dbt schema}"
+: "${DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME:?load the runner application ID}"
+: "${DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME:?load the collector application ID}"
+DATABRICKS_NOTIFICATION_EMAILS="${DATABRICKS_NOTIFICATION_EMAILS:-[]}"
 
-gh variable set DATABRICKS_CLIENT_ID \
-  --body "<deployer-application-id>"
-
-gh variable set DATABRICKS_WAREHOUSE_ID \
-  --body "<sql-warehouse-id>"
-
-gh variable set DATABRICKS_CATALOG \
-  --body "<production-catalog>"
-
-gh variable set DATABRICKS_SCHEMA \
-  --body "<production-dbt-schema>"
-
-gh variable set DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME \
-  --body "<runner-application-id>"
-
-gh variable set DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME \
-  --body "<collector-application-id>"
+for name in \
+  DATABRICKS_HOST \
+  DATABRICKS_CLIENT_ID \
+  DATABRICKS_WAREHOUSE_ID \
+  DATABRICKS_CATALOG \
+  DATABRICKS_SCHEMA \
+  DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME \
+  DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME \
+  DATABRICKS_NOTIFICATION_EMAILS
+do
+  printf '%s' "${!name}" | gh secret set "$name" --env prod
+done
 ```
 
-Optionally set `DATABRICKS_NOTIFICATION_EMAILS` to an approved JSON array. If
-it is absent, the workflow uses `[]` and sends no outbound job email.
+Set `DATABRICKS_NOTIFICATION_EMAILS` to an approved JSON array before the loop
+when native job email is allowed. Otherwise the stored value is `[]` and the
+workflow sends no outbound job email.
 
-Do not place the deployer secret in a repository variable.
+Although most values are identifiers rather than credentials, storing them as
+environment Secrets enables GitHub's automatic redaction before a step runs.
+The workflow also suppresses raw workspace responses and explicitly masks
+derived values. Keep the approved values in the internal change record because
+GitHub cannot reveal them after storage.
 
 ## 4. Create and store the deployer secret
 
@@ -244,16 +255,18 @@ bundle.
 
 ## 6. Check configuration metadata
 
-Confirm that GitHub contains the intended names without retrieving the secret:
+Confirm that GitHub contains the intended names without retrieving any value:
 
 ```bash
-gh variable list
 gh secret list --env prod
 gh api "repos/<owner>/<repo>/environments/prod"
 ```
 
-Check that every required variable is present, that the three application IDs
-are pairwise distinct, and that `DATABRICKS_CLIENT_SECRET` exists only in the
+This setup guide standardizes on nine Secret names, including an explicit
+`DATABRICKS_NOTIFICATION_EMAILS=[]` baseline. The workflow also accepts that
+optional Secret being absent and applies the same empty-list default. Compare
+the three approved application IDs in the internal change record and require
+them to be pairwise distinct. `DATABRICKS_CLIENT_SECRET` must exist only in the
 protected `prod` environment.
 
 Do not trigger the workflow as part of identity setup. Deployment is a separate
@@ -265,11 +278,12 @@ The setup is complete when:
 
 - the `prod` environment requires approval and accepts deployments only from
   `main`;
-- the protected environment contains the deployer secret;
+- the protected environment contains this guide's explicit nine-Secret
+  baseline;
 - the deployer has exactly one active OAuth secret, with its non-secret ID and
   expiry recorded;
-- repository variables contain all non-secret inputs and three distinct
-  application IDs; and
+- protected environment Secrets contain all production inputs, with three
+  distinct application IDs recorded internally; and
 - the deployer, runner, and collector prerequisites have been verified.
 
 Continue with [Deploy to production](deploy-to-production.md). That guide owns

@@ -16,7 +16,7 @@ required and make bundle validation fail when they are not supplied.
 |------|------|---------|------------------------|-----------|--------|
 | `warehouse_id` | string | none | required | workspace-specific | SQL warehouse used by the dbt task |
 | `catalog` | string | none | required | workspace-specific | Parent catalog for dbt and observability objects |
-| `schema` | string | `dbt_nyc_taxi` | optional override | no | Seed/model target schema |
+| `schema` | string | `dbt_nyc_taxi` | required Secret in the protected workflow; bundle default otherwise | no | Seed/model target schema |
 | `observability_schema` | string | `dbt_observability` | optional override | no | Base name; `_<bundle.target>` is appended |
 | `observability_staging_volume` | string | `dbt_artifacts_staging` | optional override | no | Producer-writable staging Volume |
 | `observability_volume` | string | `dbt_artifacts` | optional override | no | Collector-only evidence Volume |
@@ -27,21 +27,21 @@ required and make bundle validation fail when they are not supplied.
 | `prod_collector_service_principal_name` | string | none | required | workspace-specific | Collector Application ID |
 
 The production workflow reads `notification_emails` from the optional
-`DATABRICKS_NOTIFICATION_EMAILS` repository Variable and falls back to `[]`.
-It validates the JSON array and writes it to the ignored target
+`DATABRICKS_NOTIFICATION_EMAILS` protected environment Secret and falls back to
+`[]`. It validates the JSON array and writes it to the ignored target
 `variable-overrides.json`; complex values are not accepted through
 `BUNDLE_VAR_*`. Store a JSON array such as
-`["approved-data-operations@example.com"]`; leave the Variable absent or set it
+`["approved-data-operations@example.com"]`; leave the Secret absent or set it
 to `[]` when outbound email is prohibited.
 
 ## Databricks CLI authentication
 
 | Name | Local human | Production GitHub | Sensitive |
 |------|-------------|-------------------|-----------|
-| `DATABRICKS_HOST` | profile or environment | repository Variable | workspace-specific |
+| `DATABRICKS_HOST` | profile or environment | protected `prod` environment Secret | workspace-specific |
 | `DATABRICKS_AUTH_TYPE` | inferred by profile; OAuth U2M recommended | committed `oauth-m2m` | no |
 | `DATABRICKS_CONFIG_PROFILE` | optional profile selector | unused | no |
-| `DATABRICKS_CLIENT_ID` | unused for U2M | repository Variable | no; identifier only |
+| `DATABRICKS_CLIENT_ID` | unused for U2M | protected `prod` environment Secret | workspace-specific identifier |
 | `DATABRICKS_CLIENT_SECRET` | unused for U2M | protected `prod` environment Secret | **yes** |
 
 Production uses workspace-level OAuth M2M. `DATABRICKS_ACCOUNT_ID` is not
@@ -63,12 +63,16 @@ targets. The deployed dbt task does not read this profile.
 
 The profile uses `method: http` and `threads: 4` for both targets.
 
-## GitHub repository Variables
+## GitHub `prod` environment Secrets
 
-Set these under **Settings → Secrets and variables → Actions → Variables**.
+Store production workspace metadata and the OAuth credential under
+**Settings → Environments → prod → Environment secrets**. Secret-backed values
+are masked before a workflow step runs. After checkout and CLI setup, the
+deployment passes only the required values directly into each first-party shell
+step; it does not place classified metadata in the job-wide environment.
 
-| Variable | Workflow mapping |
-|----------|------------------|
+| Secret | Workflow mapping |
+|--------|------------------|
 | `DATABRICKS_HOST` | `DATABRICKS_HOST` |
 | `DATABRICKS_CLIENT_ID` | M2M client ID and production deployer bundle variable |
 | `DATABRICKS_WAREHOUSE_ID` | `BUNDLE_VAR_warehouse_id` |
@@ -77,14 +81,12 @@ Set these under **Settings → Secrets and variables → Actions → Variables**
 | `DATABRICKS_NOTIFICATION_EMAILS` | Optional JSON array written to the ignored production target override; default `[]` |
 | `DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME` | Production source runner bundle variable |
 | `DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME` | Production collector bundle variable |
+| `DATABRICKS_CLIENT_SECRET` | OAuth M2M credential used only by authenticated workspace steps |
 
-## GitHub environment Secret
-
-The protected `prod` environment contains exactly the deployment credential:
-
-| Secret | Consumer | Rotation requirement |
-|--------|----------|----------------------|
-| `DATABRICKS_CLIENT_SECRET` | `.github/workflows/deploy.yml` | Replace before its Databricks OAuth-secret expiry, validate a deployment, then revoke the old secret |
+GitHub cannot reveal an environment Secret after storage. Keep the approved
+host, object identifiers, and three application IDs in the internal change
+record used for deployment verification and rotation; do not reconstruct them
+from public workflow logs.
 
 PR CI and the documentation workflow receive no Databricks credential.
 

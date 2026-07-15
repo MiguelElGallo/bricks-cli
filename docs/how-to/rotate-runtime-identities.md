@@ -68,7 +68,11 @@ gh workflow run deploy.yml --ref main -f operation=freeze
 Approve the `prod` environment and wait for **Freeze recurring triggers
 (prod)** to succeed. The operation preserves each trigger definition, changes
 only `pause_status`, and fails closed if either job still has an active run.
-When it succeeds, record the workflow URL and job IDs.
+When it succeeds, record the workflow run ID. Resolve both Databricks job IDs
+privately with
+[Verify both job identities](verify-production-deployment.md#2-verify-both-job-identities),
+then place them in the approved internal change record; the public workflow log
+deliberately omits them.
 
 Do not continue while an old-identity source or collector run is active. Keep
 both triggers paused throughout the ownership and variable changes.
@@ -149,14 +153,19 @@ is privileged and should be recorded.
 
 ## 5. Update the protected deployment inputs
 
-Update both repository variables:
+Load the two approved new application IDs into the current shell without
+command tracing, then replace both protected environment Secrets through
+standard input:
 
 ```bash
-gh variable set DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME \
-  --body "<new-runner-application-id>"
-
-gh variable set DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME \
-  --body "<new-collector-application-id>"
+set +x
+set -euo pipefail
+: "${NEW_RUNNER_APPLICATION_ID:?load the new runner application ID}"
+: "${NEW_COLLECTOR_APPLICATION_ID:?load the new collector application ID}"
+printf '%s' "$NEW_RUNNER_APPLICATION_ID" |
+  gh secret set DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME --env prod
+printf '%s' "$NEW_COLLECTOR_APPLICATION_ID" |
+  gh secret set DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME --env prod
 ```
 
 The deployer must have Databricks `CAN_USE` on both new principals before it
@@ -222,14 +231,15 @@ files.
 
 If rotation fails after the freeze, leave both triggers paused while repairing
 the issue. If deployment fails before the bundle changes, restore the previous
-repository variables and dispatch `operation=deploy` to restore the old
-identities and configured trigger states.
+protected environment Secret values from the approved internal record and
+dispatch `operation=deploy` to restore the old identities and configured
+trigger states.
 
 If the new collector cannot update existing objects, restore ownership to the
-old collector or approved operations group, restore the old collector variable,
+old collector or approved operations group, restore the old collector Secret,
 redeploy, and retry the ownership plan.
 
-If the new runner fails, restore only the runner variable while leaving the
+If the new runner fails, restore only the runner Secret while leaving the
 working collector in place, and restore target-relation ownership to the old
 runner or approved owner group before dispatching the rollback deployment.
 Avoid rotating both roles again until the failed layer is understood.

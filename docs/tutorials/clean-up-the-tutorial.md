@@ -93,4 +93,8 @@ should stop cleanup rather than be deleted silently.
 The tutorial is now fully reversed. The local `bricks-demo` OAuth profile and
 repository clone remain available for later development work.
 
+To see how observability facts change across two unchanged runs, a seed-row
+change, and a larger dbt graph, read
+[How project changes appear in observability](../explanation/how-project-changes-appear-in-observability.md).
+
 [:lucide-wrench: Continue with the how-to guides](../how-to/index.md){ .md-button .md-button--primary }

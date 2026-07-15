@@ -88,26 +88,6 @@ on:
         description: "Type exactly: DESTROY bricks_cli_dbt prod"
         required: true
         type: string
-      expected_root:
-        description: "Type the approved, exact production workspace root"
-        required: true
-        type: string
-      expected_catalog:
-        description: "Type the approved production catalog from the final-run record"
-        required: true
-        type: string
-      expected_observability_schema:
-        description: "Type the approved observability schema from the final-run record"
-        required: true
-        type: string
-      expected_source_job_id:
-        description: "Type the approved source job ID from the final-run record"
-        required: true
-        type: string
-      expected_collector_job_id:
-        description: "Type the approved collector job ID from the final-run record"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -117,34 +97,36 @@ concurrency: deploy-prod
 
 env:
   DATABRICKS_AUTH_TYPE: oauth-m2m
-  DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-  DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
-  BUNDLE_VAR_warehouse_id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
-  BUNDLE_VAR_catalog: ${{ vars.DATABRICKS_CATALOG }}
-  BUNDLE_VAR_schema: ${{ vars.DATABRICKS_SCHEMA }}
-  BUNDLE_VAR_prod_deployer_service_principal_name: ${{ vars.DATABRICKS_CLIENT_ID }}
-  BUNDLE_VAR_prod_run_as_service_principal_name: ${{ vars.DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME }}
-  BUNDLE_VAR_prod_collector_service_principal_name: ${{ vars.DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME }}
 
 jobs:
   decommission:
     runs-on: ubuntu-latest
     environment: prod
-    env:
-      CONFIRMATION: ${{ inputs.confirmation }}
-      EXPECTED_ROOT_INPUT: ${{ inputs.expected_root }}
-      EXPECTED_CATALOG_INPUT: ${{ inputs.expected_catalog }}
-      EXPECTED_OBSERVABILITY_SCHEMA_INPUT: ${{ inputs.expected_observability_schema }}
-      EXPECTED_SOURCE_JOB_ID_INPUT: ${{ inputs.expected_source_job_id }}
-      EXPECTED_COLLECTOR_JOB_ID_INPUT: ${{ inputs.expected_collector_job_id }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - uses: databricks/setup-cli@bc7e6aabb6006d8d1758bd25ee1a100935c9cb7c # v1.7.0
         with:
           version: 1.7.0
 
       - name: Fail closed before receiving the secret
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          BUNDLE_VAR_warehouse_id: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+          BUNDLE_VAR_catalog: ${{ secrets.DATABRICKS_CATALOG }}
+          BUNDLE_VAR_schema: ${{ secrets.DATABRICKS_SCHEMA }}
+          BUNDLE_VAR_prod_deployer_service_principal_name: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          BUNDLE_VAR_prod_run_as_service_principal_name: ${{ secrets.DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME }}
+          BUNDLE_VAR_prod_collector_service_principal_name: ${{ secrets.DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME }}
+          EXPECTED_ROOT_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_ROOT }}
+          EXPECTED_CATALOG_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_CATALOG }}
+          EXPECTED_OBSERVABILITY_SCHEMA_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_OBSERVABILITY_SCHEMA }}
+          EXPECTED_SOURCE_JOB_ID_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_SOURCE_JOB_ID }}
+          EXPECTED_COLLECTOR_JOB_ID_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_COLLECTOR_JOB_ID }}
         shell: bash
         run: |
           set -euo pipefail
@@ -171,15 +153,16 @@ jobs:
             BUNDLE_VAR_prod_run_as_service_principal_name \
             BUNDLE_VAR_prod_collector_service_principal_name
           do
-            [[ -n "${!name:-}" ]] || {
-              echo "Required production input is empty: $name" >&2
+            value="${!name:-}"
+            [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]] || {
+              echo "Required protected production input is invalid: $name" >&2
               exit 1
             }
           done
 
           derived_root="/Workspace/Users/${DATABRICKS_CLIENT_ID}/.bundle/bricks_cli_dbt/prod"
           [[ "$EXPECTED_ROOT_INPUT" == "$derived_root" ]] || {
-            echo "The typed root does not match the deployer-scoped stable root." >&2
+            echo "The protected root does not match the deployer-scoped stable root." >&2
             exit 1
           }
 
@@ -204,13 +187,47 @@ jobs:
       - name: Drop runtime objects, destroy the bundle, and verify absence
         shell: bash
         env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          BUNDLE_VAR_warehouse_id: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+          BUNDLE_VAR_catalog: ${{ secrets.DATABRICKS_CATALOG }}
+          BUNDLE_VAR_schema: ${{ secrets.DATABRICKS_SCHEMA }}
+          BUNDLE_VAR_prod_deployer_service_principal_name: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          BUNDLE_VAR_prod_run_as_service_principal_name: ${{ secrets.DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME }}
+          BUNDLE_VAR_prod_collector_service_principal_name: ${{ secrets.DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME }}
+          EXPECTED_ROOT_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_ROOT }}
+          EXPECTED_CATALOG_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_CATALOG }}
+          EXPECTED_OBSERVABILITY_SCHEMA_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_OBSERVABILITY_SCHEMA }}
+          EXPECTED_SOURCE_JOB_ID_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_SOURCE_JOB_ID }}
+          EXPECTED_COLLECTOR_JOB_ID_INPUT: ${{ secrets.DECOMMISSION_EXPECTED_COLLECTOR_JOB_ID }}
         run: |
           set -euo pipefail
 
+          run_databricks_json() {
+            local label="$1"
+            shift
+            local output
+            if ! output="$("$@" 2>/dev/null)"; then
+              echo "$label failed; inspect it through an approved Databricks session." >&2
+              return 1
+            fi
+            printf '%s' "$output"
+          }
+          run_databricks_quiet() {
+            local label="$1"
+            shift
+            if ! "$@" >/dev/null 2>&1; then
+              echo "$label failed; inspect it through an approved Databricks session." >&2
+              return 1
+            fi
+          }
+
           expected_root="/Workspace/Users/${DATABRICKS_CLIENT_ID}/.bundle/bricks_cli_dbt/prod"
 
-          identity_json="$(databricks current-user me --output json)"
+          identity_json="$(run_databricks_json \
+            "Deployer identity verification" \
+            databricks current-user me --output json)"
           identity_client_id="$(
             jq -er '.applicationId // .userName' <<< "$identity_json"
           )"
@@ -219,8 +236,11 @@ jobs:
             exit 1
           }
 
-          databricks bundle validate --target prod
-          summary="$(databricks bundle summary --target prod --output json)"
+          run_databricks_quiet "Bundle validation" \
+            databricks bundle validate --target prod
+          summary="$(run_databricks_json \
+            "Bundle state resolution" \
+            databricks bundle summary --target prod --output json)"
 
           # Refuse to destroy state that owns anything beyond the reviewed
           # two jobs, one schema, and two Volumes.
@@ -273,6 +293,18 @@ jobs:
           state_evidence_volume_id="$(
             jq -er '.resources.volumes.dbt_artifacts.id' <<< "$summary"
           )"
+          for value in \
+            "$actual_root" \
+            "$source_job_id" \
+            "$collector_job_id" \
+            "$state_schema_id" \
+            "$resolved_catalog" \
+            "$resolved_schema" \
+            "$state_staging_volume_id" \
+            "$state_evidence_volume_id"
+          do
+            echo "::add-mask::$value"
+          done
 
           [[ "$actual_root" == "$expected_root" ]]
           [[ "$source_job_id" == "$EXPECTED_SOURCE_JOB_ID_INPUT" ]] || {
@@ -291,8 +323,8 @@ jobs:
 
           # The resource ID comes from deployed bundle state. The resolved
           # catalog/name come from the reviewed configuration. Requiring all
-          # three to equal the separately approved typed inputs prevents a
-          # changed repository variable from redirecting the DROP statements.
+          # three to equal the separately approved protected expectations
+          # prevents a changed protected input from redirecting the DROP statements.
           [[ "$state_schema_id" == "$expected_schema_id" ]] || {
             echo "Deployed schema state does not match the approved target." >&2
             exit 1
@@ -328,8 +360,12 @@ jobs:
               exit 1
             }
 
-          source_job="$(databricks jobs get "$source_job_id" --output json)"
-          collector_job="$(databricks jobs get "$collector_job_id" --output json)"
+          source_job="$(run_databricks_json \
+            "Source job verification" \
+            databricks jobs get "$source_job_id" --output json)"
+          collector_job="$(run_databricks_json \
+            "Collector job verification" \
+            databricks jobs get "$collector_job_id" --output json)"
           jq -e '.settings.name == "nyc_taxi_dbt_job"' \
             <<< "$source_job" >/dev/null
           jq -e '.settings.name == "nyc_taxi_dbt_observability_collector"' \
@@ -351,8 +387,10 @@ jobs:
                   <<< "$collector_job")" \
               '{job_id: $job_id, new_settings: {schedule: $schedule}}'
           )"
-          databricks jobs update --json "$source_update"
-          databricks jobs update --json "$collector_update"
+          run_databricks_quiet "Pausing the source trigger" \
+            databricks jobs update --json "$source_update"
+          run_databricks_quiet "Pausing the collector schedule" \
+            databricks jobs update --json "$collector_update"
 
           databricks jobs get "$source_job_id" --output json |
             jq -e '.settings.trigger.pause_status == "PAUSED"' >/dev/null
@@ -370,11 +408,10 @@ jobs:
 
           {
             echo "## Approved decommission target"
-            echo "- Commit: ${GITHUB_SHA}"
-            echo "- Root: ${actual_root}"
-            echo "- Source job ID: ${source_job_id}"
-            echo "- Collector job ID: ${collector_job_id}"
-            echo "- Schema: ${catalog}.${schema}"
+            echo "- Protected target expectations: matched"
+            echo "- Source and collector triggers: paused"
+            echo "- Active source or collector runs: none"
+            echo "- Workspace identifiers: omitted from this public log"
           } >> "$GITHUB_STEP_SUMMARY"
 
           run_sql() {
@@ -396,13 +433,13 @@ jobs:
                   on_wait_timeout: "CANCEL"
                 }'
             )"
-            response="$(
+            response="$(run_databricks_json \
+              "Approved SQL statement" \
               databricks api post /api/2.0/sql/statements \
                 --json "$payload" \
-                --output json
-            )"
+                --output json)"
             jq -e '.status.state == "SUCCEEDED"' <<< "$response" >/dev/null || {
-              jq '.status' <<< "$response" >&2
+              echo "Approved SQL statement did not succeed; inspect it in Databricks." >&2
               exit 1
             }
           }
@@ -428,48 +465,60 @@ jobs:
           done
 
           # No bundle deploy is allowed between guard removal and this destroy.
-          databricks bundle destroy --target prod --auto-approve
+          run_databricks_quiet "Bundle destruction" \
+            databricks bundle destroy --target prod --auto-approve
 
-          databricks jobs list \
+          run_databricks_json "Source job absence verification" \
+            databricks jobs list \
             --name nyc_taxi_dbt_job \
             --output json |
             jq -e --argjson id "$source_job_id" \
               'all(.[]; .job_id != $id)' >/dev/null
-          databricks jobs list \
+          run_databricks_json "Collector job absence verification" \
+            databricks jobs list \
             --name nyc_taxi_dbt_observability_collector \
             --output json |
             jq -e --argjson id "$collector_job_id" \
               'all(.[]; .job_id != $id)' >/dev/null
-          databricks schemas list "$catalog" --output json |
+          run_databricks_json "Schema absence verification" \
+            databricks schemas list "$catalog" --output json |
             jq -e --arg full_name "${catalog}.${schema}" \
               'all(.[]; .full_name != $full_name)' >/dev/null
 
           user_home="/Workspace/Users/${DATABRICKS_CLIENT_ID}"
           dot_bundle="${user_home}/.bundle"
           bundle_parent="${dot_bundle}/bricks_cli_dbt"
-          home_entries="$(databricks workspace list "$user_home" --output json)"
+          home_entries="$(run_databricks_json \
+            "Workspace-home verification" \
+            databricks workspace list "$user_home" --output json)"
           if jq -e --arg path "$dot_bundle" \
             'any(.[]; .path == $path)' <<< "$home_entries" >/dev/null
           then
-            bundle_entries="$(
-              databricks workspace list "$dot_bundle" --output json
-            )"
+            bundle_entries="$(run_databricks_json \
+              "Bundle-parent verification" \
+              databricks workspace list "$dot_bundle" --output json)"
             if jq -e --arg path "$bundle_parent" \
               'any(.[]; .path == $path)' <<< "$bundle_entries" >/dev/null
             then
-              databricks workspace list "$bundle_parent" --output json |
+              run_databricks_json "Bundle-root absence verification" \
+                databricks workspace list "$bundle_parent" --output json |
                 jq -e --arg root "$expected_root" \
                   'all(.[]; .path != $root)' >/dev/null
             fi
           fi
+
+      - name: Remove protected local configuration
+        if: ${{ always() }}
+        run: rm -rf .databricks/bundle/prod
 ```
 
 The workflow has no push trigger, shares the production deployment lock, and
 cannot run before `prod` approval releases the deployer secret. Its preflight
 checks occur in this order before any deletion:
 
-1. exact `main` ref, absence of `deploy.yml`, typed confirmation, typed root,
-   and typed catalog/schema and job IDs from the approved final-run record;
+1. exact `main` ref, absence of `deploy.yml`, typed confirmation, and protected
+   root, catalog/schema, and job-ID expectations from the approved final-run
+   record;
 2. deployer M2M identity and exact bundle name, target, mode, and stable root;
 3. reviewed removal of all three lifecycle guards;
 4. an exact two-job, one-schema, two-Volume resource set, with job IDs, schema
@@ -485,31 +534,39 @@ Only then does it drop exactly five views followed by three tables, without
 Merge the reviewed change to `main`. Because that commit removes `deploy.yml`,
 the guard removal must not start a normal deployment or either production job.
 
-Dispatch the temporary workflow with every exact approved input:
+Load the five exact expectations from the approved final-run record into the
+current shell without command tracing. Store them as short-lived protected
+environment Secrets before dispatching the temporary workflow:
 
 ```bash
-export DEPLOYER_APPLICATION_ID="<approved-deployer-application-id>"
-export EXPECTED_ROOT="/Workspace/Users/${DEPLOYER_APPLICATION_ID}/.bundle/bricks_cli_dbt/prod"
-export EXPECTED_CATALOG="<catalog-recorded-with-the-final-run>"
-export EXPECTED_OBSERVABILITY_SCHEMA="<observability-schema-recorded-with-the-final-run>"
-export EXPECTED_SOURCE_JOB_ID="<source-job-id-recorded-with-the-final-run>"
-export EXPECTED_COLLECTOR_JOB_ID="<collector-job-id-recorded-with-the-final-run>"
+set +x
+set -euo pipefail
+: "${EXPECTED_ROOT:?load the approved production root}"
+: "${EXPECTED_CATALOG:?load the approved production catalog}"
+: "${EXPECTED_OBSERVABILITY_SCHEMA:?load the approved observability schema}"
+: "${EXPECTED_SOURCE_JOB_ID:?load the approved source job ID}"
+: "${EXPECTED_COLLECTOR_JOB_ID:?load the approved collector job ID}"
+
+printf '%s' "$EXPECTED_ROOT" |
+  gh secret set DECOMMISSION_EXPECTED_ROOT --env prod
+printf '%s' "$EXPECTED_CATALOG" |
+  gh secret set DECOMMISSION_EXPECTED_CATALOG --env prod
+printf '%s' "$EXPECTED_OBSERVABILITY_SCHEMA" |
+  gh secret set DECOMMISSION_EXPECTED_OBSERVABILITY_SCHEMA --env prod
+printf '%s' "$EXPECTED_SOURCE_JOB_ID" |
+  gh secret set DECOMMISSION_EXPECTED_SOURCE_JOB_ID --env prod
+printf '%s' "$EXPECTED_COLLECTOR_JOB_ID" |
+  gh secret set DECOMMISSION_EXPECTED_COLLECTOR_JOB_ID --env prod
 
 gh workflow run decommission-prod.yml \
   --ref main \
-  -f confirmation='DESTROY bricks_cli_dbt prod' \
-  -f expected_root="$EXPECTED_ROOT" \
-  -f expected_catalog="$EXPECTED_CATALOG" \
-  -f expected_observability_schema="$EXPECTED_OBSERVABILITY_SCHEMA" \
-  -f expected_source_job_id="$EXPECTED_SOURCE_JOB_ID" \
-  -f expected_collector_job_id="$EXPECTED_COLLECTOR_JOB_ID"
+  -f confirmation='DESTROY bricks_cli_dbt prod'
 ```
 
-Approve the `prod` environment only after comparing the workflow commit, typed
-root, typed catalog/schema and job IDs, change record, and final-run evidence.
-Do not derive the typed catalog/schema or job IDs from the mutable repository
-variables/state in the decommission commit. Watch the selected run to its
-terminal result:
+Approve the `prod` environment only after comparing the workflow commit, the
+recorded five protected expectations, change record, and final-run evidence.
+Do not derive those expectation values from mutable bundle state in the
+decommission commit. Watch the selected run to its terminal result:
 
 ```bash
 gh run list --workflow decommission-prod.yml --limit 1
@@ -595,36 +652,51 @@ SQL warehouse, and unrelated jobs still exist.
 
 ## 5. Remove the one-time path, external grants, and credentials
 
-After independent verification, make the temporary workflow unusable before
-doing anything else:
-
-```bash
-gh secret delete DATABRICKS_CLIENT_SECRET --env prod
-```
-
-Immediately merge a cleanup pull request that removes
-`.github/workflows/decommission-prod.yml`. Keep the ordinary `deploy.yml`
+After independent verification, immediately merge a cleanup pull request that
+removes `.github/workflows/decommission-prod.yml`. Keep the ordinary `deploy.yml`
 workflow removed. Remove the retired production configuration, or restore all
 three lifecycle guards before retaining it as reference; never leave an
 unguarded `prod` target ready for deployment.
 
-Delete repository variables that were dedicated to this workload:
+Delete protected environment Secrets that were dedicated to this workload:
 
 ```bash
-for name in \
-  DATABRICKS_CLIENT_ID \
-  DATABRICKS_WAREHOUSE_ID \
-  DATABRICKS_CATALOG \
-  DATABRICKS_SCHEMA \
-  DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME \
-  DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME \
+set -euo pipefail
+retired_secrets=(
+  DATABRICKS_CLIENT_SECRET
+  DATABRICKS_CLIENT_ID
+  DATABRICKS_WAREHOUSE_ID
+  DATABRICKS_CATALOG
+  DATABRICKS_SCHEMA
+  DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME
+  DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME
   DATABRICKS_NOTIFICATION_EMAILS
+  DECOMMISSION_EXPECTED_ROOT
+  DECOMMISSION_EXPECTED_CATALOG
+  DECOMMISSION_EXPECTED_OBSERVABILITY_SCHEMA
+  DECOMMISSION_EXPECTED_SOURCE_JOB_ID
+  DECOMMISSION_EXPECTED_COLLECTOR_JOB_ID
+)
+existing="$(gh secret list --env prod --json name)"
+for name in "${retired_secrets[@]}"
 do
-  gh variable delete "$name"
+  if jq -e --arg name "$name" 'any(.[]; .name == $name)' \
+    <<< "$existing" >/dev/null
+  then
+    gh secret delete "$name" --env prod
+  fi
+done
+
+remaining="$(gh secret list --env prod --json name)"
+for name in "${retired_secrets[@]}"
+do
+  jq -e --arg name "$name" 'all(.[]; .name != $name)' \
+    <<< "$remaining" >/dev/null
 done
 ```
 
-Delete `DATABRICKS_HOST` too only if no other repository workflow uses it. Keep
+Delete the `DATABRICKS_HOST` environment Secret too only if no other protected
+workflow uses it. Keep
 the GitHub environment and deployment history for the required audit-retention
 period.
 
