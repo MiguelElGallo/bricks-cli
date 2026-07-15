@@ -59,7 +59,7 @@ code, tests, and documentation in one bundle root.
 
 | Path | Resource |
 |------|----------|
-| `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | Committed 100-row seed |
+| `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | Committed 101-row seed |
 | `src/seeds/nyc_taxi/properties.yml` | Seed metadata |
 | `src/models/nyc_taxi/nyc_taxi_trips.sql` | Single Delta-table model |
 | `src/models/nyc_taxi/schema.yml` | Model descriptions and two `not_null` tests |

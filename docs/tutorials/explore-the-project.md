@@ -50,7 +50,7 @@ Count the lines:
 wc -l src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv
 ```
 
-The result is `101`: one header plus 100 taxi trips. Because the CSV is
+The result is `102`: one header plus 101 taxi trips. Because the CSV is
 committed, the tutorial does not download data from an external service.
 
 ## Inspect the model
@@ -113,7 +113,7 @@ The complete build graph is:
 
 ```mermaid
 flowchart LR
-    csv["100-row CSV"] --> seed["nyc_taxi_trips_seed"]
+    csv["101-row CSV"] --> seed["nyc_taxi_trips_seed"]
     seed -->|ref| model["nyc_taxi_trips table"]
     model --> tests["two not_null tests"]
     tests --> artifacts["manifest + run results"]

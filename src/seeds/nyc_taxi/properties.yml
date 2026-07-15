@@ -3,7 +3,7 @@ version: 2
 seeds:
   - name: nyc_taxi_trips_seed
     description: >
-      Raw NYC yellow-taxi trips. A 100-row extract of the public
+      Raw NYC yellow-taxi trips. A 101-row extract of the public
       `samples.nyctaxi.trips` table on Databricks, committed as a CSV seed so the
       demo is fully self-contained. Loaded into the warehouse by `dbt seed`.
     columns:

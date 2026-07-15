@@ -1,0 +1,1 @@
+src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv -text whitespace=cr-at-eol
