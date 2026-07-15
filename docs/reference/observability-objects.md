@@ -189,7 +189,7 @@ failed_nodes, skipped_nodes, evidence_status
 
 The native run remains visible without dbt evidence as `MISSING` or `PENDING`.
 
-## Example
+## Example query
 
 ```sql
 SELECT
@@ -204,5 +204,7 @@ FROM `<catalog>`.`<observability-schema>`.`dbt_run_health`
 ORDER BY generated_at DESC;
 ```
 
-See the official [Lakeflow Jobs system-table reference](https://docs.databricks.com/aws/en/admin/system-tables/jobs).
+For verified values from a real run, see the tutorial's
+[verified sanitized capture](../tutorials/observe-your-first-run.md#see-one-real-reference-capture).
 
+See the official [Lakeflow Jobs system-table reference](https://docs.databricks.com/aws/en/admin/system-tables/jobs).
