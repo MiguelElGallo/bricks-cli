@@ -50,30 +50,105 @@ In the same SQL editor, query the exact observability schema name recorded from
 ```sql
 SELECT
   generated_at,
+  captured_at,
+  dbt_version,
+  adapter_type,
+  command,
   upstream_result_state,
   capture_status,
   staging_cleanup_status,
   invocation_status,
+  elapsed_seconds,
   total_nodes,
-  failed_nodes
+  success_nodes,
+  warning_nodes,
+  failed_nodes,
+  skipped_nodes
 FROM `<your-catalog>`.`<observability-schema-from-summary>`.`dbt_run_health`
 ORDER BY generated_at DESC
 LIMIT 1;
 ```
 
-The newest row should report:
+## See one real reference capture
 
-| Column | Expected value |
+This dated snapshot came from
+[protected workflow run `29369191248`](https://github.com/MiguelElGallo/bricks-cli/actions/runs/29369191248),
+which deployed
+[commit `48a608c`](https://github.com/MiguelElGallo/bricks-cli/commit/48a608c35dd04260668cdca2548df6b2ce0895c5)
+on July 14, 2026. That workflow exercised the repository's `prod` target;
+these are not values copied from your tutorial run. Run- and node-level values
+were copied from the sanitized `dbt_run_health` and `dbt_node_health` views.
+
+The archive and idempotency summaries came from a temporary, least-privilege
+verification query against restricted tables. No raw artifact was opened or
+exported. This is one observed successful run, not an output contract. Your
+timestamps, dbt version, durations, and archive sizes may differ. An unmodified
+successful tutorial run should still report `success`, `COMPLETE`, `DELETED`,
+four successful nodes, and no warnings, failures, or skipped nodes.
+
+### Run-level facts
+
+| Captured field | Observed value |
 |---|---|
-| `upstream_result_state` | `success` |
-| `capture_status` | `COMPLETE` |
-| `staging_cleanup_status` | `DELETED` |
-| `invocation_status` | `success` |
-| `total_nodes` | `4` |
-| `failed_nodes` | `0` |
+| Artifacts generated (`generated_at`) | `2026-07-14T21:22:26.348Z` |
+| Collector recorded (`captured_at`) | `2026-07-14T21:23:34.706Z` |
+| dbt version (`dbt_version`) / adapter (`adapter_type`) | `1.11.11` / `databricks` |
+| Command | `build` |
+| Upstream result | `success` |
+| Capture (`capture_status`) / cleanup (`staging_cleanup_status`) | `COMPLETE` / `DELETED` |
+| Invocation result | `success` |
+| dbt elapsed time | `14.545` seconds |
+| Node counts | `4` successful, `0` warning, `0` failed, `0` skipped |
 
-The four dbt nodes are the seed, model, and two tests. The collector does not
-publish raw SQL, free-form messages, or credentials through this view.
+### Node-level facts
+
+| Resource | Node | Status | Elapsed (s) | Compile (s) | Execute (s) | Failures | Rows affected |
+|---|---|---|---:|---:|---:|---:|---:|
+| seed | `nyc_taxi_trips_seed` | `success` | `5.419` | `0.000` | `5.348` | `NULL` | `100` |
+| model | `nyc_taxi_trips` | `success` | `5.183` | `1.031` | `4.078` | `NULL` | `NULL` |
+| test | `not_null_nyc_taxi_trips_dropoff_at` | `pass` | `1.803` | `0.488` | `1.236` | `0` | `NULL` |
+| test | `not_null_nyc_taxi_trips_pickup_at` | `pass` | `2.236` | `0.580` | `1.580` | `0` | `NULL` |
+
+`NULL` means dbt did not report a value for that field; it does not mean zero.
+Elapsed time includes work outside the compile and execute phases, so those
+three columns do not need to add up exactly.
+
+### Artifact summary
+
+| Captured field | Observed value |
+|---|---|
+| Required files | `2`: `manifest.json`, `run_results.json` |
+| Compressed archive | `108,302` bytes |
+| Uncompressed payload | `931,803` bytes |
+| Manifest schema | [`https://schemas.getdbt.com/dbt/manifest/v12.json`](https://schemas.getdbt.com/dbt/manifest/v12.json) |
+| Run-results schema | [`https://schemas.getdbt.com/dbt/run-results/v6.json`](https://schemas.getdbt.com/dbt/run-results/v6.json) |
+| Parser contract | `1.0.0` |
+
+### Idempotency check
+
+The same attempt passed through two collector sweeps without creating duplicate
+facts:
+
+| Registry rows | Invocation rows | Node rows | Distinct node keys |
+|---:|---:|---:|---:|
+| `1` | `1` | `4` | `4` |
+
+For this attempt, one registry record points to one dbt invocation and four
+unique node results. The second sweep did not add another copy. To reproduce
+the proof with the complete six-field AttemptKey, follow
+[Verify a production deployment](../how-to/verify-production-deployment.md).
+
+!!! note "Sanitized public evidence"
+
+    This curated example uses only the repository's public demonstration data
+    and contains no Personal Data. It deliberately omits the Databricks
+    workspace host; workspace, job, task, collector, account, warehouse,
+    catalog, schema, and principal identifiers; the dbt invocation ID; archive
+    paths and hashes; manifest hashes; raw JSON; compiled SQL; logs; free-form
+    messages; adapter-response objects; and relation data. See
+    [Security and secret boundaries](../explanation/security-and-secrets.md)
+    and the complete
+    [observability object contract](../reference/observability-objects.md).
 
 You have completed the end-to-end path: one dbt result and one independently
 captured evidence result, using only Databricks-native services.
