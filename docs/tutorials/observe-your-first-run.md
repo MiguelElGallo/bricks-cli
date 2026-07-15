@@ -89,9 +89,7 @@ LIMIT 1;
 
 ## See one real reference capture
 
-This dated snapshot came from
-[protected workflow run `29369191248`](https://github.com/MiguelElGallo/bricks-cli/actions/runs/29369191248),
-which deployed
+This dated snapshot came from a protected deployment of
 [commit `48a608c`](https://github.com/MiguelElGallo/bricks-cli/commit/48a608c35dd04260668cdca2548df6b2ce0895c5)
 on July 14, 2026. That workflow exercised the repository's `prod` target;
 these are not values copied from your tutorial run. Run- and node-level values
@@ -171,6 +169,7 @@ the proof with the complete six-field AttemptKey, follow
     [observability object contract](../reference/observability-objects.md).
 
 You have completed the end-to-end path: one dbt result and one independently
-captured evidence result, using only Databricks-native services.
+captured evidence result, using only Databricks-native services. Clean up the
+tutorial before continuing to the explanation pages.
 
 [:lucide-arrow-right: Clean up the tutorial](clean-up-the-tutorial.md){ .md-button .md-button--primary }

@@ -53,6 +53,13 @@ commands.
     How staged artifacts become deterministic evidence, how terminal states and
     cleanup differ, and where the producer trust boundary remains.
 
+-   :lucide-git-compare-arrows: **[How project changes appear in observability](how-project-changes-appear-in-observability.md)**
+
+    ---
+
+    A real four-attempt comparison: unchanged reruns, a seed-row change, and a
+    graph expansion from 4 to 15 normalized node facts.
+
 -   :lucide-lock: **[Security and secret boundaries](security-and-secrets.md)**
 
     ---

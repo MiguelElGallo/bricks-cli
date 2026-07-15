@@ -30,11 +30,12 @@ instead of leaving residual access.
 You need a U2M profile with permission to view workspace-directory ACLs, GitHub
 read access, and `jq`.
 
-Read the non-secret deployer application ID from the approved repository
-variable and construct the stable path declared in `databricks.yml`:
+Load the deployer application ID from the approved internal change record and
+construct the stable path declared in `databricks.yml`:
 
 ```bash
-deployer="$(gh variable get DATABRICKS_CLIENT_ID)"
+: "${APPROVED_DEPLOYER_APPLICATION_ID:?load the deployer application ID}"
+deployer="$APPROVED_DEPLOYER_APPLICATION_ID"
 bundle_files="/Workspace/Users/${deployer}/.bundle/bricks_cli_dbt/prod/files"
 object_id="$(
   databricks workspace get-status \
@@ -58,7 +59,8 @@ direct principal remains.
 
 - If an application ID is wrong, correct
   `DATABRICKS_RUN_AS_SERVICE_PRINCIPAL_NAME` or
-  `DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME` in GitHub.
+  `DATABRICKS_COLLECTOR_SERVICE_PRINCIPAL_NAME` in the protected `prod`
+  environment Secrets.
 - If the deployer cannot update the directory, repair its authority on the
   stable bundle root. Do not grant that authority to a runtime identity.
 - If the ACL is correct, check the job `run_as`, warehouse, and Unity Catalog

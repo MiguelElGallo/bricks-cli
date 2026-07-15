@@ -12,7 +12,7 @@ failures, and duration warnings. The repository sends nothing by default:
 
 You need:
 
-- permission to update GitHub repository variables and dispatch the deployment
+- permission to update protected GitHub environment Secrets and dispatch the deployment
   workflow;
 - authority to approve the protected `prod` environment;
 - read-only access to both jobs for verification;
@@ -30,17 +30,33 @@ authority.
 
 ## Set approved production recipients
 
-Store the JSON array as a non-secret GitHub repository variable:
+Read the approved JSON without echoing it, validate it, and store it as a
+protected `prod` environment Secret:
 
 ```bash
-gh variable set DATABRICKS_NOTIFICATION_EMAILS \
-  --body '["approved-data-operations@example.com"]'
+set +x
+set -euo pipefail
+read -r -s -p 'Approved recipient JSON: ' recipients
+printf '\n'
+jq -e '
+  type == "array" and
+  all(.[];
+    type == "string" and
+    length > 0 and
+    length <= 254 and
+    (test("[\\r\\n]") | not)
+  )
+' \
+  <<< "$recipients" >/dev/null
+printf '%s' "$recipients" |
+  gh secret set DATABRICKS_NOTIFICATION_EMAILS --env prod
+unset recipients
 ```
 
 The production workflow validates the array and writes its ignored
 `.databricks/bundle/prod/variable-overrides.json` file before bundle
 validation. It rejects blank, non-string, and overlong entries and falls back
-to `[]` when the variable is absent. Complex bundle values cannot be supplied
+to `[]` when the Secret is absent. Complex bundle values cannot be supplied
 through `BUNDLE_VAR_*`.
 
 Do not commit a personal address to `databricks.yml`.
@@ -95,13 +111,13 @@ still has no in-run retry.
 To disable outbound delivery, use the same protected path:
 
 ```bash
-gh variable set DATABRICKS_NOTIFICATION_EMAILS --body '[]'
+printf '[]' | gh secret set DATABRICKS_NOTIFICATION_EMAILS --env prod
 gh workflow run deploy.yml --ref main -f operation=deploy
 ```
 
 Approve `prod`, then repeat the read-only job inspection. Do not remove a
 recipient only in the workspace UI; a later bundle deployment would restore the
-approved variable value.
+approved Secret value.
 
 ## Related reference
 

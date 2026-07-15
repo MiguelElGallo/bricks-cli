@@ -17,7 +17,7 @@ Before merging:
 
 - complete [OAuth M2M CI/CD setup](set-up-m2m-cicd.md);
 - protect the `prod` environment with required review and a `main` branch rule;
-- configure all required repository variables and the environment secret;
+- configure all required protected `prod` environment Secrets;
 - grant the deployer authority to assign both `run_as` identities;
 - grant the runner's warehouse and dbt-target prerequisites;
 - grant the collector's workspace and parent-catalog prerequisites; and
@@ -43,8 +43,12 @@ Merge the reviewed pull request to `main`.
 
 ## 2. Approve the protected deployment
 
-The merge triggers `.github/workflows/deploy.yml`. GitHub pauses the job at the
-`prod` environment before releasing `DATABRICKS_CLIENT_SECRET`.
+The merge triggers `.github/workflows/deploy.yml` unless every changed path is
+in its documentation-only ignore list. That keeps documentation publication
+from creating unrelated production AttemptKeys while preserving a fail-safe
+deployment for other repository changes. GitHub pauses the job at the
+`prod` environment before releasing the protected workspace metadata and
+`DATABRICKS_CLIENT_SECRET`.
 
 Review the commit and deployment target, then approve the environment. For an
 intentional rerun of the current `main`:
@@ -92,7 +96,9 @@ gh run list \
 export DEPLOY_RUN_ID="<approved-workflow-run-id-from-the-list>"
 gh run view "$DEPLOY_RUN_ID" \
   --json headSha,status,conclusion,url,jobs
-gh run view "$DEPLOY_RUN_ID" --log | grep 'ACCEPTANCE_RUN_IDS'
+gh run view "$DEPLOY_RUN_ID" --exit-status
+gh run view "$DEPLOY_RUN_ID" --log |
+  grep -F 'Acceptance sequence succeeded: one source build and two collector sweeps.'
 ```
 
 Confirm:
@@ -100,10 +106,12 @@ Confirm:
 - `headSha` is the reviewed commit you intended to deploy;
 - workflow conclusion is `success`;
 - validation, deployment, ACL, source, and both collector stages passed; and
-- one `ACCEPTANCE_RUN_IDS` line records the source parent/task IDs and both
-  collector parent IDs.
+- the log contains the safe acceptance-success line without Databricks
+  identifiers.
 
-Keep the workflow URL and four Databricks run IDs for the verification task.
+Keep the workflow run ID and approved commit for the verification task. Resolve
+the four Databricks run IDs privately by following the exact workflow-window
+procedure in the next section; do not publish them in Actions logs.
 
 ## 5. Verify evidence
 
@@ -122,8 +130,8 @@ Deployment succeeds when:
 - the bundle deployed from reviewed `main`;
 - runtime directory ACLs were reconciled;
 - source and both collector sweep stages reported terminal success; and
-- the exact four workflow-created run IDs were recorded for independent
-  verification.
+- the exact four workflow-created run IDs can be resolved privately and
+  recorded in the approved internal change record.
 
 ## Recovery
 

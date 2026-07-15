@@ -14,8 +14,8 @@ include:
 
 # Every workspace-specific value is a bundle variable, supplied at deploy time as
 # BUNDLE_VAR_* — for example:
-#   * GitHub Actions repository variables surfaced as BUNDLE_VAR_* (see
-#     .github/workflows/), or
+#   * protected GitHub prod-environment Secrets passed to first-party workflow
+#     steps as BUNDLE_VAR_* (see .github/workflows/), or
 #   * local BUNDLE_VAR_* env vars / a variable-overrides file.
 # The workspace host is resolved from DATABRICKS_HOST or your CLI profile.
 variables:

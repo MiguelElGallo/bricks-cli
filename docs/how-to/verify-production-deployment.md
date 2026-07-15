@@ -17,7 +17,9 @@ certification.
 You need:
 
 - a successful protected `Deploy bundle (prod)` workflow run;
-- GitHub CLI access, `jq`, and standard `grep`;
+- the approved internal change record containing the reviewed commit SHA and
+  deployer, source-runner, and collector application IDs;
+- GitHub CLI access, `jq`, and Python 3;
 - a read-only Databricks OAuth U2M profile that can inspect the two jobs, their
   runs, and the deployed-directory ACL; and
 - an approved, time-bounded verifier role with `USE CATALOG`, `USE SCHEMA`, and
@@ -59,13 +61,27 @@ Do not start another production job or mutate bundle state through the human
 profile. The protected workflow already created the acceptance source run and
 two collector sweeps.
 
-## 1. Record the workflow's exact run IDs
+Load the four approved-record values as `APPROVED_SHA`,
+`APPROVED_DEPLOYER_APPLICATION_ID`, `APPROVED_SOURCE_RUN_AS`, and
+`APPROVED_COLLECTOR_RUN_AS` without printing them. Run steps 1 through 3 in one
+Bash session so their shell variables remain available. The first command
+enables fail-fast behavior for every assertion.
+
+## 1. Record the approved workflow window
 
 List successful workflow runs for the exact reviewed commit, then choose the
 approved run ID:
 
 ```bash
-export APPROVED_SHA="<full-reviewed-main-commit-sha>"
+set -euo pipefail
+: "${APPROVED_SHA:?load the approved commit SHA}"
+: "${APPROVED_DEPLOYER_APPLICATION_ID:?load the deployer application ID}"
+: "${APPROVED_SOURCE_RUN_AS:?load the source runner application ID}"
+: "${APPROVED_COLLECTOR_RUN_AS:?load the collector application ID}"
+[[ "$APPROVED_DEPLOYER_APPLICATION_ID" != "$APPROVED_SOURCE_RUN_AS" ]]
+[[ "$APPROVED_DEPLOYER_APPLICATION_ID" != "$APPROVED_COLLECTOR_RUN_AS" ]]
+[[ "$APPROVED_SOURCE_RUN_AS" != "$APPROVED_COLLECTOR_RUN_AS" ]]
+
 gh run list \
   --workflow deploy.yml \
   --commit "$APPROVED_SHA" \
@@ -75,23 +91,31 @@ gh run list \
 export DEPLOY_RUN_ID="<approved-workflow-run-id-from-the-list>"
 run_metadata="$(
   gh run view "$DEPLOY_RUN_ID" \
-    --json headSha,conclusion,url
+    --json headSha,conclusion,startedAt,updatedAt,url
 )"
 jq -e --arg sha "$APPROVED_SHA" \
   '.headSha == $sha and .conclusion == "success"' \
   <<< "$run_metadata" >/dev/null
 gh run view "$DEPLOY_RUN_ID" --exit-status
-gh run view "$DEPLOY_RUN_ID" --log | grep 'ACCEPTANCE_RUN_IDS'
+
+workflow_window_ms="$(
+  jq -r '[.startedAt, .updatedAt] | @tsv' <<< "$run_metadata" |
+    python3 -c '
+import datetime as dt
+import sys
+
+started, ended = sys.stdin.read().strip().split("\t")
+parse = lambda value: dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+print(int(parse(started).timestamp() * 1000),
+      int(parse(ended).timestamp() * 1000))
+'
+)"
+read -r workflow_start_ms workflow_end_ms <<< "$workflow_window_ms"
 ```
 
-Record the four values from the single `ACCEPTANCE_RUN_IDS` line:
-
-```text
-source_parent, source_task, collector_1, collector_2
-```
-
-The source task ID is the `dbt_nyc_taxi` task run, not the parent run. Do not
-substitute a newer scheduled or manually launched run.
+Keep the two millisecond timestamps in the current shell. They bound the
+workflow-created one-time runs without publishing Databricks identifiers in a
+public Actions log.
 
 ## 2. Verify both job identities
 
@@ -116,39 +140,90 @@ collector_job_id="$(
       if length == 1 then .[0].job_id
       else error("expected exactly one production collector job") end'
 )"
+source_job="$(
+  databricks jobs get "$source_job_id" --profile bricks-demo --output json
+)"
+collector_job="$(
+  databricks jobs get "$collector_job_id" --profile bricks-demo --output json
+)"
+source_run_as="$(jq -er '.settings.run_as.service_principal_name' <<< "$source_job")"
+collector_run_as="$(jq -er '.settings.run_as.service_principal_name' <<< "$collector_job")"
 
-databricks jobs get "$source_job_id" --profile bricks-demo --output json |
-  jq '{name: .settings.name, run_as: .settings.run_as}'
-databricks jobs get "$collector_job_id" --profile bricks-demo --output json |
-  jq '{name: .settings.name, run_as: .settings.run_as,
-       schedule: .settings.schedule}'
+[[ "$source_run_as" == "$APPROVED_SOURCE_RUN_AS" ]]
+[[ "$collector_run_as" == "$APPROVED_COLLECTOR_RUN_AS" ]]
+[[ "$source_run_as" != "$collector_run_as" ]]
+jq -e '.settings.schedule.pause_status == "UNPAUSED"' \
+  <<< "$collector_job" >/dev/null
+printf 'Approved runtime identities and collector schedule verified.\n'
 ```
 
 Confirm the source uses the approved runner application ID, the collector uses
-the different collector application ID, and the production collector schedule
-is `UNPAUSED`.
+the different approved collector application ID, and the production collector
+schedule is `UNPAUSED`.
 
-## 3. Verify the workflow-created runs
+## 3. Resolve and verify the workflow-created runs
 
-Replace the placeholders with the four IDs recorded in step 1:
+From those identity-verified jobs, select only one-time runs inside the approved
+workflow window. Reject ambiguity instead of choosing the newest run:
 
 ```bash
-databricks jobs get-run <source-parent-run-id> \
-  --profile bricks-demo --output json |
-  jq '{run_id, job_id, state,
-       dbt_task: (.tasks[] | select(.task_key == "dbt_nyc_taxi") |
-         {run_id, task_key, attempt_number, state})}'
+source_runs="$(
+  databricks jobs list-runs \
+    --job-id "$source_job_id" \
+    --completed-only \
+    --expand-tasks \
+    --start-time-from "$workflow_start_ms" \
+    --start-time-to "$workflow_end_ms" \
+    --profile bricks-demo \
+    --output json
+)"
+source_run="$(
+  jq -cer '
+    map(select(
+      .trigger == "ONE_TIME" and
+      .state.life_cycle_state == "TERMINATED" and
+      .state.result_state == "SUCCESS"
+    )) |
+    if length == 1 then .[0]
+    else error("expected exactly one workflow source run") end
+  ' <<< "$source_runs"
+)"
+source_run_id="$(jq -er '.run_id' <<< "$source_run")"
+source_task_run_id="$(
+  jq -er '
+    [.tasks[] | select(.task_key == "dbt_nyc_taxi")] |
+    if length == 1 then .[0].run_id
+    else error("expected exactly one dbt source task") end
+  ' <<< "$source_run"
+)"
 
-databricks jobs get-run <collector-run-id-1> \
-  --profile bricks-demo --output json |
-  jq '{run_id, job_id, state}'
-databricks jobs get-run <collector-run-id-2> \
-  --profile bricks-demo --output json |
-  jq '{run_id, job_id, state}'
+collector_runs="$(
+  databricks jobs list-runs \
+    --job-id "$collector_job_id" \
+    --completed-only \
+    --start-time-from "$workflow_start_ms" \
+    --start-time-to "$workflow_end_ms" \
+    --profile bricks-demo \
+    --output json |
+    jq -cer '
+      map(select(
+        .trigger == "ONE_TIME" and
+        .state.life_cycle_state == "TERMINATED" and
+        .state.result_state == "SUCCESS"
+      )) | sort_by(.start_time) |
+      if length == 2 then .
+      else error("expected exactly two workflow collector runs") end
+    '
+)"
+collector_run_id_1="$(jq -er '.[0].run_id' <<< "$collector_runs")"
+collector_run_id_2="$(jq -er '.[1].run_id' <<< "$collector_runs")"
+printf 'Resolved one source task and two collector sweeps in the approved window.\n'
 ```
 
-Require `TERMINATED` / `SUCCESS` for the source parent and both collector runs.
-Confirm the source response contains the recorded source task run ID.
+Record `source_run_id`, `source_task_run_id`, `collector_run_id_1`, and
+`collector_run_id_2` in the approved internal change record. Do not print them
+to a public workflow log. The source task ID is the `dbt_nyc_taxi` task run, not
+the parent run.
 
 ## 4. Resolve the full AttemptKey
 
@@ -287,10 +362,12 @@ Require `registry_rows = 1`, `invocation_rows = 1`, `node_rows > 0`, and
 
 ## 7. Verify workspace-file access
 
-Read the stable path from the approved deployer application-ID variable:
+Read the stable path from the deployer application ID loaded from the approved
+internal record:
 
 ```bash
-deployer="$(gh variable get DATABRICKS_CLIENT_ID)"
+: "${APPROVED_DEPLOYER_APPLICATION_ID:?reload the deployer application ID}"
+deployer="$APPROVED_DEPLOYER_APPLICATION_ID"
 bundle_files="/Workspace/Users/${deployer}/.bundle/bricks_cli_dbt/prod/files"
 object_id="$(
   databricks workspace get-status \

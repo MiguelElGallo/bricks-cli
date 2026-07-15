@@ -15,15 +15,16 @@ The deployment needs several workspace-specific values:
 
 | Value | Stored as | Reason |
 |---|---|---|
-| Workspace host | GitHub repository variable or local profile | Selects a workspace |
-| Warehouse, catalog, schema | GitHub repository variables or local environment | Selects data and compute |
-| Service-principal application IDs | GitHub repository variables | Identifies deployer and runtime identities |
+| Workspace host | Protected GitHub `prod` environment Secret or local profile | Selects a workspace |
+| Warehouse, catalog, schema | Protected GitHub `prod` environment Secrets or local environment | Selects data and compute |
+| Service-principal application IDs | Protected GitHub `prod` environment Secrets | Identifies deployer and runtime identities |
 | Deployer client secret | Protected GitHub `prod` environment secret | Authenticates OAuth M2M |
 | Local OAuth credential | Local Databricks credential cache | Authenticates a human through U2M |
 
-Repository variables are not treated as credentials, but keeping real workspace
-identifiers out of source still reduces accidental disclosure and prevents the
-example from being tied to one workspace.
+Most production values are identifiers rather than authentication credentials.
+They still reveal workspace topology, so the public workflow treats them as
+classified metadata: it stores them as protected environment Secrets, suppresses
+raw workspace responses, and explicitly masks derived values.
 
 The deployment client secret is different: it is confidential, must have a
 bounded lifetime, and must be rotated. It never belongs in a repository

@@ -98,6 +98,7 @@ nav = [
       { "Explanation" = "explanation/index.md" },
       { "Native observability architecture" = "explanation/native-observability.md" },
       { "Evidence lifecycle" = "explanation/evidence-lifecycle.md" },
+      { "How project changes appear" = "explanation/how-project-changes-appear-in-observability.md" },
       { "Development and production" = "explanation/development-vs-production.md" },
       { "Why Declarative Automation Bundles" = "explanation/why-asset-bundles.md" },
       { "The authentication model" = "explanation/authentication.md" },
