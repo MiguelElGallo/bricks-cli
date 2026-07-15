@@ -82,12 +82,19 @@ alter an object owned by its predecessor.
 ### Transfer dbt target relations
 
 Inspect every relation managed by the project in the production dbt schema.
-For the committed graph, transfer the seed and model tables to the new runner:
+For the committed graph, transfer both seeds, the two tables, and the view to
+the new runner:
 
 ```sql
 ALTER TABLE `<catalog>`.`<dbt-schema>`.`nyc_taxi_trips_seed`
   OWNER TO `<new-runner-principal>`;
 ALTER TABLE `<catalog>`.`<dbt-schema>`.`nyc_taxi_trips`
+  OWNER TO `<new-runner-principal>`;
+ALTER TABLE `<catalog>`.`<dbt-schema>`.`weather_daily_seed`
+  OWNER TO `<new-runner-principal>`;
+ALTER VIEW `<catalog>`.`<dbt-schema>`.`weather_daily_observations`
+  OWNER TO `<new-runner-principal>`;
+ALTER TABLE `<catalog>`.`<dbt-schema>`.`weather_station_summary`
   OWNER TO `<new-runner-principal>`;
 ```
 

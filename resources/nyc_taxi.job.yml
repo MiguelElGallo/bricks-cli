@@ -61,7 +61,7 @@ resources:
                 dbt --log-format-file json
                 build
                 --target-path /Volumes/${var.catalog}/${resources.schemas.dbt_observability.name}/${resources.volumes.dbt_artifact_staging.name}/workspace_id={{workspace.id}}/job_id={{job.id}}/job_run_id={{job.run_id}}/repair_count={{job.repair_count}}/task_run_id={{task.run_id}}/execution_count={{task.execution_count}}/target
-                --select +nyc_taxi_trips
+                --select +nyc_taxi_trips +weather_station_summary
                 --quiet --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
           timeout_seconds: 2700
           max_retries: 1

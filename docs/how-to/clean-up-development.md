@@ -101,6 +101,9 @@ Remove only the relations known to belong to this disposable deployment:
 
 ```sql
 DROP TABLE IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`long_trips`;
+DROP VIEW IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`weather_daily_observations`;
+DROP TABLE IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`weather_station_summary`;
+DROP TABLE IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`weather_daily_seed`;
 DROP TABLE IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`nyc_taxi_trips`;
 DROP TABLE IF EXISTS `<catalog>`.`<dedicated-development-schema>`.`nyc_taxi_trips_seed`;
 DROP SCHEMA IF EXISTS `<catalog>`.`<dedicated-development-schema>`;

@@ -1,8 +1,8 @@
 -- nyc_taxi_trips
 --
--- "Move the seed into a table." This is the only model in the project. It reads
--- the committed seed (samples.nyctaxi.trips extract) and materializes a real
--- Delta table in Unity Catalog, adding light typing and one derived column.
+-- "Move the seed into a table." This model reads the committed
+-- samples.nyctaxi.trips extract and materializes a real Delta table in Unity
+-- Catalog, adding light typing and one derived column.
 {{ config(materialized = 'table') }}
 
 with source as (

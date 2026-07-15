@@ -40,7 +40,25 @@ FROM `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`nyc_taxi_trips`;
 ```
 
 Replace `<your-catalog>` with the value you exported. The result should contain
-`100` rows and an average trip duration of roughly `26` minutes.
+`101` rows and an average trip duration of roughly `26` minutes.
+
+Query the synthetic station summary too:
+
+```sql
+SELECT
+  station_id,
+  observation_days,
+  average_mean_temp_c,
+  total_precipitation_mm,
+  wet_days
+FROM `<your-catalog>`.`dbt_nyc_taxi_tutorial`.`weather_station_summary`
+ORDER BY station_id;
+```
+
+The result has two rows. `HEL_DEMO` reports four days, `17.38` °C average
+mean temperature, `8.6` mm precipitation, and two wet days. `NYC_DEMO` reports
+four days, `25.75` °C, `17.1` mm, and three wet days. These values are
+explicitly synthetic and exist only to make the dbt graph deterministic.
 
 ## Confirm the capture
 
@@ -81,10 +99,12 @@ were copied from the sanitized `dbt_run_health` and `dbt_node_health` views.
 
 The archive and idempotency summaries came from a temporary, least-privilege
 verification query against restricted tables. No raw artifact was opened or
-exported. This is one observed successful run, not an output contract. Your
-timestamps, dbt version, durations, and archive sizes may differ. An unmodified
-successful tutorial run should still report `success`, `COMPLETE`, `DELETED`,
-four successful nodes, and no warnings, failures, or skipped nodes.
+exported. This is one observed successful run, not an output contract. It
+predates the weather graph and preserves the earlier four-node taxi-only shape
+as historical evidence. Your timestamps, dbt version, durations, and archive
+sizes may differ. The current unmodified tutorial graph resolves to 15 nodes;
+it should still report `success`, `COMPLETE`, `DELETED`, and no warnings,
+failures, or skipped nodes.
 
 ### Run-level facts
 

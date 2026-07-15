@@ -15,7 +15,7 @@ The completed path looks like this:
 flowchart LR
     cli["Databricks CLI"] --> bundle["Development bundle"]
     bundle --> source["dbt source job"]
-    source --> table["NYC taxi table"]
+    source --> outputs["Taxi + weather models"]
     source --> staging["dbt artifact staging"]
     staging --> collector["Independent collector"]
     collector --> health["Sanitized health view"]
@@ -25,7 +25,7 @@ By the end, you will have:
 
 - authenticated the CLI with browser-based OAuth user-to-machine (U2M),
 - deployed two paused development jobs and governed Unity Catalog storage,
-- built one seed, one model, and its data tests with dbt Core,
+- built two seeds, three models, and ten data tests with dbt Core,
 - captured `manifest.json` and `run_results.json` without an external telemetry
   platform, and
 - removed every tutorial object again.

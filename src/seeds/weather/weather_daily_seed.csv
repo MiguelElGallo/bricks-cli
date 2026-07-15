@@ -1,0 +1,9 @@
+station_id,station_name,observation_date,min_temp_c,max_temp_c,precipitation_mm
+HEL_DEMO,Helsinki demo station,2026-07-01,14.0,22.0,0.0
+HEL_DEMO,Helsinki demo station,2026-07-02,15.0,24.0,1.2
+HEL_DEMO,Helsinki demo station,2026-07-03,13.0,19.0,7.4
+HEL_DEMO,Helsinki demo station,2026-07-04,12.0,20.0,0.0
+NYC_DEMO,New York demo station,2026-07-01,22.0,31.0,0.0
+NYC_DEMO,New York demo station,2026-07-02,23.0,32.0,4.6
+NYC_DEMO,New York demo station,2026-07-03,21.0,29.0,12.0
+NYC_DEMO,New York demo station,2026-07-04,20.0,28.0,0.5

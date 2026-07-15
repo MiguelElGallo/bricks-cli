@@ -48,11 +48,13 @@ The single command is:
 ```bash
 dbt --log-format-file json build \
   --target-path /Volumes/${var.catalog}/${resources.schemas.dbt_observability.name}/${resources.volumes.dbt_artifact_staging.name}/workspace_id={{workspace.id}}/job_id={{job.id}}/job_run_id={{job.run_id}}/repair_count={{job.repair_count}}/task_run_id={{task.run_id}}/execution_count={{task.execution_count}}/target \
-  --select +nyc_taxi_trips \
+  --select +nyc_taxi_trips +weather_station_summary \
   --quiet --warn-error-options '{"error":["NoNodesForSelectionCriteria"]}'
 ```
 
-`--select +nyc_taxi_trips` includes the seed, model, and attached tests.
+The two terminal selectors include both complete ancestor graphs and their
+attached tests in one dbt invocation. For the current project, that resolved to
+15 nodes during validation: two seeds, three models, and ten tests.
 `--target-path` stages dbt JSON output under the exact task-attempt identity.
 The command does not pass dbt `--target`; Databricks generates the connection
 profile from the task's warehouse, catalog, and schema.
@@ -101,8 +103,11 @@ warehouse, build in the dbt schema, and read/write only the staging Volume. See
 
 | Output | Location |
 |--------|----------|
-| Seed relation | `${var.catalog}.${var.schema}.nyc_taxi_trips_seed` |
-| Model relation | `${var.catalog}.${var.schema}.nyc_taxi_trips` |
+| Taxi seed relation | `${var.catalog}.${var.schema}.nyc_taxi_trips_seed` |
+| Taxi model relation | `${var.catalog}.${var.schema}.nyc_taxi_trips` |
+| Weather seed relation | `${var.catalog}.${var.schema}.weather_daily_seed` |
+| Weather daily model | `${var.catalog}.${var.schema}.weather_daily_observations` |
+| Weather summary model | `${var.catalog}.${var.schema}.weather_station_summary` |
 | dbt manifest | Attempt staging leaf `target/manifest.json`, when dbt produces it |
 | dbt run results | Attempt staging leaf `target/run_results.json`, when dbt produces it |
 | Native job state | Lakeflow Jobs run history |

@@ -4,29 +4,35 @@ icon: lucide/folder-tree
 
 # Explore the dbt project
 
-Before we deploy, we will follow one row of data through the small dbt project.
-The project deliberately contains one seed, one table model, and two data tests
-so the deployment and observability mechanics remain visible.
+Before we deploy, we will follow one taxi row through the first small graph,
+then inspect a second synthetic weather graph. Keeping both topics in one dbt
+invocation makes the later observability difference easy to see.
 
 ## See the project files
 
 From the repository root, list the dbt files:
 
 ```bash
-find src/models src/seeds -type f | sort
+find src/models src/seeds src/tests -type f ! -name '.gitkeep' | sort
 ```
 
-You should see these four paths:
+You should see these paths:
 
 ```text
 src/models/nyc_taxi/nyc_taxi_trips.sql
 src/models/nyc_taxi/schema.yml
+src/models/weather/schema.yml
+src/models/weather/weather_daily_observations.sql
+src/models/weather/weather_station_summary.sql
 src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv
 src/seeds/nyc_taxi/properties.yml
+src/seeds/weather/properties.yml
+src/seeds/weather/weather_daily_seed.csv
+src/tests/weather_daily_observation_ranges.sql
+src/tests/weather_station_summary_invariants.sql
 ```
 
-The project configuration is the fifth dbt file we will inspect. It lives at
-the repository root as `dbt_project.yml`.
+The root project configuration lives in `dbt_project.yml`.
 
 ## Inspect the seed
 
@@ -89,6 +95,23 @@ You should find one `not_null` data test for `pickup_at` and another for
 [`dbt build`](https://docs.getdbt.com/reference/commands/build), so the seed,
 model, and selected tests run in dependency order within one dbt invocation.
 
+## Inspect the weather graph
+
+The weather seed is explicitly synthetic. Print its metadata and both models:
+
+```bash
+sed -n '1,160p' src/seeds/weather/properties.yml
+sed -n '1,200p' src/models/weather/weather_daily_observations.sql
+sed -n '1,200p' src/models/weather/weather_station_summary.sql
+sed -n '1,240p' src/models/weather/schema.yml
+sed -n '1,200p' src/tests/weather_daily_observation_ranges.sql
+sed -n '1,240p' src/tests/weather_station_summary_invariants.sql
+```
+
+The first model has one row per station and date. The second aggregates those
+rows to one row per station. Their schema and singular tests check keys, nulls,
+ranges, and reconciliation without downloading data at run time.
+
 ## Check the privacy default
 
 Show the project flags:
@@ -113,10 +136,21 @@ The complete build graph is:
 
 ```mermaid
 flowchart LR
-    csv["101-row CSV"] --> seed["nyc_taxi_trips_seed"]
-    seed -->|ref| model["nyc_taxi_trips table"]
-    model --> tests["two not_null tests"]
-    tests --> artifacts["manifest + run results"]
+    taxi_csv["101 taxi rows"] --> taxi_seed["nyc_taxi_trips_seed"]
+    taxi_seed --> taxi_model["nyc_taxi_trips table"]
+    taxi_model --> taxi_tests["2 taxi tests"]
+
+    weather_csv["8 synthetic weather rows"] --> weather_seed["weather_daily_seed"]
+    weather_seed --> seed_tests["2 seed tests"]
+    weather_seed --> daily["weather_daily_observations view"]
+    daily --> daily_tests["3 daily-model tests"]
+    daily --> summary["weather_station_summary table"]
+    summary --> summary_tests["3 summary tests"]
+
+    taxi_tests --> artifacts["one manifest + run results pair"]
+    seed_tests --> artifacts
+    daily_tests --> artifacts
+    summary_tests --> artifacts
 ```
 
 You have now inspected every resource the source job will build.

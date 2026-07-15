@@ -1,0 +1,25 @@
+version: 2
+
+seeds:
+  - name: weather_daily_seed
+    description: >
+      Eight explicitly synthetic daily weather observations created only for
+      this public dbt and observability demo. The values are invented, contain
+      no Personal Data, and must not be interpreted as meteorological records.
+    columns:
+      - name: station_id
+        description: "Stable identifier for a synthetic demo station."
+        data_tests:
+          - not_null
+      - name: station_name
+        description: "Human-readable name for a synthetic demo station."
+      - name: observation_date
+        description: "Synthetic observation date."
+        data_tests:
+          - not_null
+      - name: min_temp_c
+        description: "Synthetic daily minimum temperature in degrees Celsius."
+      - name: max_temp_c
+        description: "Synthetic daily maximum temperature in degrees Celsius."
+      - name: precipitation_mm
+        description: "Synthetic daily precipitation in millimetres."

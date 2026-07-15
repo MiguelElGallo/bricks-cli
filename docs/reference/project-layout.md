@@ -19,7 +19,10 @@ code, tests, and documentation in one bundle root.
 ├── profile_template.yml
 ├── src/
 │   ├── models/nyc_taxi/
+│   ├── models/weather/
 │   ├── seeds/nyc_taxi/
+│   ├── seeds/weather/
+│   ├── tests/
 │   └── observability/
 │       ├── collect_dbt_artifacts.py
 │       └── collector_core.py
@@ -61,8 +64,14 @@ code, tests, and documentation in one bundle root.
 |------|----------|
 | `src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` | Committed 101-row seed |
 | `src/seeds/nyc_taxi/properties.yml` | Seed metadata |
-| `src/models/nyc_taxi/nyc_taxi_trips.sql` | Single Delta-table model |
+| `src/models/nyc_taxi/nyc_taxi_trips.sql` | Taxi Delta-table model |
 | `src/models/nyc_taxi/schema.yml` | Model descriptions and two `not_null` tests |
+| `src/seeds/weather/weather_daily_seed.csv` | Eight-row synthetic weather seed |
+| `src/seeds/weather/properties.yml` | Synthetic-data notice, metadata, and seed tests |
+| `src/models/weather/weather_daily_observations.sql` | Station-date weather view |
+| `src/models/weather/weather_station_summary.sql` | Station-grain Delta summary table |
+| `src/models/weather/schema.yml` | Weather model descriptions and key tests |
+| `src/tests/weather_*.sql` | Weather range and reconciliation tests |
 
 See [dbt project](dbt-project.md) for the executable contract.
 

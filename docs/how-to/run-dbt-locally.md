@@ -4,7 +4,7 @@ icon: lucide/laptop
 
 # Run dbt locally
 
-Use this guide to build and test the selected NYC taxi graph from your machine
+Use this guide to build and test both selected demo graphs from your machine
 against a development schema in Databricks.
 
 ## Prerequisites
@@ -80,14 +80,15 @@ List the resources that the build will select:
 
 ```bash
 dbt list \
-  --select "+nyc_taxi_trips" \
+  --select "+nyc_taxi_trips +weather_station_summary" \
   --profiles-dir dbt_profiles \
   --target dev \
   --output name
 ```
 
-The output should include `nyc_taxi_trips_seed`, `nyc_taxi_trips`, and the two
-`not_null` tests.
+For the current project, the output has 15 nodes: two seeds, three models, and
+ten tests. Treat that count as a preview of this revision, not a permanent dbt
+contract.
 
 ## Build and test
 
@@ -95,7 +96,7 @@ Run the selected graph:
 
 ```bash
 dbt build \
-  --select "+nyc_taxi_trips" \
+  --select "+nyc_taxi_trips +weather_station_summary" \
   --profiles-dir dbt_profiles \
   --target dev \
   --quiet \
@@ -103,8 +104,8 @@ dbt build \
 ```
 
 The command should exit with status `0`. [`dbt build`](https://docs.getdbt.com/reference/commands/build)
-loads the seed, materializes the table, and executes the selected tests in DAG
-order.
+loads both seeds, materializes the selected models, and executes their tests in
+DAG order.
 
 Preview five output rows:
 
@@ -117,7 +118,18 @@ dbt show \
 ```
 
 The preview should contain typed pickup/drop-off timestamps and a derived
-`trip_minutes` column. Your local dbt loop is now working against
+`trip_minutes` column. Preview the station-grain model too:
+
+```bash
+dbt show \
+  --select weather_station_summary \
+  --limit 5 \
+  --profiles-dir dbt_profiles \
+  --target dev
+```
+
+The second preview should contain two synthetic demo stations and their period
+aggregates. Your local dbt loop is now working against
 `<your-catalog>.dbt_nyc_taxi_dev`.
 
 ## Related
