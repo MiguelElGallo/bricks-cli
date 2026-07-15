@@ -5,7 +5,7 @@ icon: lucide/blocks
 # dbt project
 
 `dbt_project.yml` defines one self-contained dbt Core project: a committed
-100-row seed, one Delta-table model, and two column tests.
+101-row seed, one Delta-table model, and two column tests.
 
 ## Project contract
 
@@ -49,7 +49,7 @@ upstream seed, the model, and attached tests.
 
 ## Seed
 
-`src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` contains 100 rows with six
+`src/seeds/nyc_taxi/nyc_taxi_trips_seed.csv` contains 101 rows with six
 columns. `dbt_project.yml` fixes their load types:
 
 | Column | dbt seed type |
